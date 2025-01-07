@@ -7,12 +7,24 @@ import { sortTable } from '../../utils/sort'
 import DiskList from './DiskList'
 import HostActions from './HostActions'
 import InstanceManagerComponent from './components/InstanceManagerComponent'
-import { nodeStatusColorMap } from '../../utils/filter'
-import { byteToGi, getStorageProgressStatus } from './helper/index'
-import { formatMib } from '../../utils/formater'
+import { nodeStatusColorMap } from '../../utils/status'
+import {
+  byteToGi,
+  getStorageProgressStatus,
+  computeTotalAllocated,
+  computeAllocated,
+  computeBackingImageAllocated,
+  computeReplicaAllocated,
+  computeUsagePercentage,
+  computeTotalUsed,
+  computeUsed,
+  computeSize,
+  computeReserved
+} from './helper/index'
+import { formatMib } from '../../utils/formatter'
 import { pagination } from '../../utils/page'
 import { ModalBlur } from '../../components'
-import C from '../../utils/constants'
+import C, { nodeTagColor } from '../../utils/constants'
 
 class List extends React.Component {
   constructor(props) {
@@ -33,17 +45,8 @@ class List extends React.Component {
   }
 
   componentDidMount() {
-    let height = document.getElementById('hostTable').offsetHeight - C.ContainerMarginHeight
-    this.setState({
-      height,
-    })
-    window.onresize = () => {
-      height = document.getElementById('hostTable').offsetHeight - C.ContainerMarginHeight
-      this.setState({
-        height,
-      })
-      this.props.dispatch({ type: 'app/changeNavbar' })
-    }
+    this.onResize()
+    window.addEventListener('resize', this.onResize)
     window.addEventListener('keydown', this.onkeydown)
     window.addEventListener('keyup', this.onkeyup)
   }
@@ -57,9 +60,14 @@ class List extends React.Component {
     })
     window.removeEventListener('keydown', this.onkeydown)
     window.removeEventListener('keyup', this.onkeyup)
-    window.onresize = () => {
-      this.props.dispatch({ type: 'app/changeNavbar' })
-    }
+    window.removeEventListener('resize', this.onResize)
+  }
+
+  onResize = () => {
+    const height = document.getElementById('hostTable').offsetHeight - C.ContainerMarginHeight
+    this.setState({
+      height,
+    })
   }
 
   onkeyup = () => {
@@ -199,26 +207,6 @@ class List extends React.Component {
       deleteHost,
     }
 
-    const computeTotalAllocated = (record) => {
-      const max = Object.values(record.disks).reduce((total, item) => total + item.storageMaximum, 0)
-      const reserved = Object.values(record.disks).reduce((total, item) => total + item.storageReserved, 0)
-      return ((max - reserved) * storageOverProvisioningPercentage) / 100
-    }
-    const computeAllocated = (record) => {
-      return Object.values(record.disks).reduce((total, item) => total + item.storageScheduled, 0)
-    }
-    const coumputeTotalUsed = (record) => {
-      return Object.values(record.disks).reduce((total, item) => total + item.storageMaximum, 0)
-    }
-    const computeUsed = (record) => {
-      return Object.values(record.disks).reduce((total, item) => total + (item.storageMaximum - item.storageAvailable), 0)
-    }
-    const computeSize = (record) => {
-      return Object.values(record.disks).reduce((total, item) => total + (item.storageMaximum - item.storageReserved), 0)
-    }
-    const computeReserved = (record) => {
-      return Object.values(record.disks).reduce((total, item) => total + item.storageReserved, 0)
-    }
     const columns = [
       {
         title: <span style={{ display: 'inline-block', padding: '0 0 0 30px' }}>Status</span>,
@@ -293,13 +281,34 @@ class List extends React.Component {
         sorter: (a, b) => computeAllocated(a) - computeAllocated(b),
         render: (text, record) => {
           const allocated = computeAllocated(record)
-          const total = computeTotalAllocated(record)
-          const p = total === 0 ? 0 : Math.round((allocated / total) * 100)
+          const total = computeTotalAllocated(record, storageOverProvisioningPercentage)
+          const backingImageAllocated = computeBackingImageAllocated(record)
+          const replicaAllocated = computeReplicaAllocated(record)
+          const percent = computeUsagePercentage(allocated, total)
+          const backingImagePercent = computeUsagePercentage(backingImageAllocated, total)
+          const status = getStorageProgressStatus(minimalSchedulingQuotaWarning, percent)
+
+          const renderTooltipContent = () => (
+            <div className={styles.allocatedTooltip}>
+              <span>Replica Size: {byteToGi(replicaAllocated)} Gi</span>
+              <span>Backing Image Size: {byteToGi(backingImageAllocated)} Gi</span>
+              <span>Total Usage: {percent}%</span>
+            </div>
+          )
+          const tooltipContent = renderTooltipContent()
+
           return (
             <div>
               <div>
-                <Tooltip title={`${p}%`}>
-                  <Progress strokeWidth={14} status={getStorageProgressStatus(minimalSchedulingQuotaWarning, p)} percent={p > 100 ? 100 : p} showInfo={false} />
+                <Tooltip title={tooltipContent}>
+                  <Progress
+                    strokeWidth={14}
+                    status={status}
+                    percent={percent}
+                    successPercent={backingImagePercent}
+                    showInfo={false}
+                    className={styles.progress}
+                  />
                 </Tooltip>
               </div>
               <div className={styles.secondLabel}>
@@ -316,12 +325,13 @@ class List extends React.Component {
         sorter: (a, b) => computeUsed(a) - computeUsed(b),
         render: (text, record) => {
           const used = computeUsed(record)
-          const total = coumputeTotalUsed(record)
-          const p = total === 0 ? 0 : Math.round((used / total) * 100)
+          const total = computeTotalUsed(record)
+          const p = computeUsagePercentage(used, total)
+
           return (
             <div>
               <div>
-                <Tooltip title={`${p}%`}>
+                <Tooltip title={`Total usage: ${p}%`}>
                   <Progress strokeWidth={14} status={getStorageProgressStatus(minimalSchedulingQuotaWarning, p)} percent={p > 100 ? 100 : p} showInfo={false} />
                 </Tooltip>
               </div>
@@ -357,7 +367,7 @@ class List extends React.Component {
           let forMap = (tag, index) => {
             return (
               <span style={{ marginBottom: '6px' }} key={index}>
-                <Tag color="rgb(39, 174, 95)">
+                <Tag color={nodeTagColor}>
                   {tag}
                 </Tag>
               </span>

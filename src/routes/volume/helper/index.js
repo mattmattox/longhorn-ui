@@ -1,10 +1,10 @@
 export function isSchedulingFailure(volume) {
   // volume.conditions.scheduled.status may be equal to 'Unknown' or 'True' or 'False', only 'False' value is scheduling failure
   // volume.conditions may be empty object({})
-  return volume.conditions && volume.conditions.scheduled && volume.conditions.scheduled.status.toLowerCase() === 'false'
+  return volume.conditions && volume.conditions.Scheduled && volume.conditions.Scheduled.status.toLowerCase() === 'false'
 }
 
-export function genAttachHostModalProps(volumes, hosts, visible, dispatch) {
+export function getAttachHostModalProps(volumes, hosts, visible, dispatch) {
   return {
     items: volumes,
     visible,
@@ -22,6 +22,28 @@ export function genAttachHostModalProps(volumes, hosts, visible, dispatch) {
     onCancel() {
       dispatch({
         type: 'volume/hideAttachHostModal',
+      })
+      dispatch({
+        type: 'app/changeBlur',
+        payload: false,
+      })
+    },
+  }
+}
+
+export function getDetachHostModalProps(volumes, visible, dispatch) {
+  return {
+    items: volumes,
+    visible,
+    onOk(record) {
+      dispatch({
+        type: 'volume/detach',
+        payload: record,
+      })
+    },
+    onCancel() {
+      dispatch({
+        type: 'volume/hideDetachHostModal',
       })
       dispatch({
         type: 'app/changeBlur',
@@ -135,6 +157,56 @@ export function getUpdateReplicaCountModalProps(volume, visible, dispatch) {
   }
 }
 
+export function getUpdateSnapshotMaxCountModalProps(volume, visible, dispatch) {
+  return {
+    item: volume,
+    visible,
+    onOk(v, url) {
+      dispatch({
+        type: 'volume/snapshotMaxCountUpdate',
+        payload: {
+          params: v,
+          url,
+        },
+      })
+    },
+    onCancel() {
+      dispatch({
+        type: 'volume/hideUpdateSnapshotMaxCountModal',
+      })
+      dispatch({
+        type: 'app/changeBlur',
+        payload: false,
+      })
+    },
+  }
+}
+
+export function getUpdateSnapshotMaxSizeModalProps(volume, visible, dispatch) {
+  return {
+    item: volume,
+    visible,
+    onOk(v, url) {
+      dispatch({
+        type: 'volume/snapshotMaxSizeUpdate',
+        payload: {
+          params: v,
+          url,
+        },
+      })
+    },
+    onCancel() {
+      dispatch({
+        type: 'volume/hideUpdateSnapshotMaxSizeModal',
+      })
+      dispatch({
+        type: 'app/changeBlur',
+        payload: false,
+      })
+    },
+  }
+}
+
 export function getUpdateDataLocalityModalProps(volume, visible, defaultDataLocalityOption, dispatch) {
   let option = []
 
@@ -167,6 +239,134 @@ export function getUpdateDataLocalityModalProps(volume, visible, defaultDataLoca
   }
 }
 
+export function getUnmapMarkSnapChainRemovedModalProps(volume, visible, dispatch) {
+  let option = [
+    { key: 'enabled', value: 'enabled' },
+    { key: 'disabled', value: 'disabled' },
+    { key: 'ignored (follow the global setting)', value: 'ignored' },
+  ]
+
+  return {
+    item: volume,
+    option,
+    visible,
+    onOk(v, url) {
+      dispatch({
+        type: 'volume/updateUnmapMarkSnapChainRemoved',
+        payload: {
+          params: v,
+          url,
+        },
+      })
+    },
+    onCancel() {
+      dispatch({
+        type: 'volume/hideUpdateUnmapMarkSnapChainRemovedModal',
+      })
+      dispatch({
+        type: 'app/changeBlur',
+        payload: false,
+      })
+    },
+  }
+}
+
+export function getUpdateSnapshotDataIntegrityProps(volume, visible, defaultSnapshotDataIntegrityOption, dispatch) {
+  let options = []
+
+  if (defaultSnapshotDataIntegrityOption && defaultSnapshotDataIntegrityOption.length > 0) {
+    options = defaultSnapshotDataIntegrityOption
+  }
+
+  return {
+    item: volume,
+    options,
+    visible,
+    onOk(v, url) {
+      dispatch({
+        type: 'volume/updateSnapshotDataIntegrity',
+        payload: {
+          params: v,
+          url,
+        },
+      })
+    },
+    onCancel() {
+      dispatch({
+        type: 'volume/hideUpdateSnapshotDataIntegrityModal',
+      })
+      dispatch({
+        type: 'app/changeBlur',
+        payload: false,
+      })
+    },
+  }
+}
+
+export function getBulkUnmapMarkSnapChainRemovedModalProps(volumes, visible, dispatch) {
+  let option = [
+    { key: 'enabled', value: 'enabled' },
+    { key: 'disabled', value: 'disabled' },
+    { key: 'ignored (follow the global setting)', value: 'ignored' },
+  ]
+
+  return {
+    items: volumes,
+    option,
+    visible,
+    onOk(v, urls) {
+      dispatch({
+        type: 'volume/updateBulkUnmapMarkSnapChainRemoved',
+        payload: {
+          params: v,
+          urls,
+        },
+      })
+    },
+    onCancel() {
+      dispatch({
+        type: 'volume/hideBulkUpdateUnmapMarkSnapChainRemovedModal',
+      })
+      dispatch({
+        type: 'app/changeBlur',
+        payload: false,
+      })
+    },
+  }
+}
+
+export function getUpdateBulkSnapshotDataIntegrityModalProps(volumes, visible, defaultSnapshotDataIntegrityOption, dispatch) {
+  let options = []
+
+  if (defaultSnapshotDataIntegrityOption && defaultSnapshotDataIntegrityOption.length > 0) {
+    options = defaultSnapshotDataIntegrityOption
+  }
+
+  return {
+    items: volumes,
+    options,
+    visible,
+    onOk(v, urls) {
+      dispatch({
+        type: 'volume/updateBulkSnapshotDataIntegrity',
+        payload: {
+          params: v,
+          urls,
+        },
+      })
+    },
+    onCancel() {
+      dispatch({
+        type: 'volume/hideUpdateBulkSnapshotDataIntegrityModal',
+      })
+      dispatch({
+        type: 'app/changeBlur',
+        payload: false,
+      })
+    },
+  }
+}
+
 export function getUpdateBulkDataLocalityModalProps(volumes, visible, defaultDataLocalityOption, dispatch) {
   let option = []
 
@@ -190,6 +390,122 @@ export function getUpdateBulkDataLocalityModalProps(volumes, visible, defaultDat
     onCancel() {
       dispatch({
         type: 'volume/hideUpdateBulkDataLocalityModal',
+      })
+      dispatch({
+        type: 'app/changeBlur',
+        payload: false,
+      })
+    },
+  }
+}
+
+export function getUpdateFreezeFilesystemForSnapshotModalProps(volume, visible, dispatch) {
+  let option = [
+    { key: 'enabled', value: 'enabled' },
+    { key: 'disabled', value: 'disabled' },
+    { key: 'ignored (follow the global setting)', value: 'ignored' },
+  ]
+
+  return {
+    item: volume,
+    option,
+    visible,
+    onOk(v, url) {
+      dispatch({
+        type: 'volume/updateFreezeFilesystemForSnapshot',
+        payload: {
+          params: v,
+          url,
+        },
+      })
+    },
+    onCancel() {
+      dispatch({
+        type: 'volume/hideUpdateFreezeFilesystemForSnapshotModal',
+      })
+      dispatch({
+        type: 'app/changeBlur',
+        payload: false,
+      })
+    },
+  }
+}
+
+export function getUpdateBulkFreezeFilesystemForSnapshotModalProps(volumes, visible, dispatch) {
+  const option = [
+    { key: 'enabled', value: 'enabled' },
+    { key: 'disabled', value: 'disabled' },
+    { key: 'ignored (follow the global setting)', value: 'ignored' },
+  ]
+
+  return {
+    items: volumes,
+    option,
+    visible,
+    onOk(v, urls) {
+      dispatch({
+        type: 'volume/updateBulkFreezeFilesystemForSnapshot',
+        payload: {
+          params: v,
+          urls,
+        },
+      })
+    },
+    onCancel() {
+      dispatch({
+        type: 'volume/hideUpdateBulkFreezeFilesystemForSnapshotModal',
+      })
+      dispatch({
+        type: 'app/changeBlur',
+        payload: false,
+      })
+    },
+  }
+}
+
+export function getUpdateBackupTargetProps(volume, visible, backupTargets, dispatch) {
+  return {
+    item: volume,
+    visible,
+    backupTargets,
+    onOk(v, url) {
+      dispatch({
+        type: 'volume/backupTargetUpdate',
+        payload: {
+          params: v,
+          url,
+        },
+      })
+    },
+    onCancel() {
+      dispatch({
+        type: 'volume/hideUpdateBackupTargetModal',
+      })
+      dispatch({
+        type: 'app/changeBlur',
+        payload: false,
+      })
+    },
+  }
+}
+
+export function getUpdateBulkBackupTargetProps(volumes, visible, backupTargets, dispatch) {
+  return {
+    items: volumes,
+    visible,
+    backupTargets,
+    onOk(v, urls) {
+      dispatch({
+        type: 'volume/bulkBackupTargetUpdate',
+        payload: {
+          params: v,
+          urls,
+        },
+      })
+    },
+    onCancel() {
+      dispatch({
+        type: 'volume/hideUpdateBulkBackupTargetModal',
       })
       dispatch({
         type: 'app/changeBlur',
@@ -274,6 +590,89 @@ export function getUpdateReplicaAutoBalanceModalProps(volumes, visible, dispatch
   }
 }
 
+export function getUpdateReplicaSoftAntiAffinityModalProps(volume, volumes, updateReplicaSoftAntiAffinityVisible, softAntiAffinityKey, dispatch) {
+  let replicaSoftAntiAffinityVolumes = []
+  let fields = {}
+  switch (softAntiAffinityKey) {
+    case 'updateReplicaSoftAntiAffinity':
+      fields = {
+        actionKey: 'updateReplicaSoftAntiAffinity',
+        key: 'replicaSoftAntiAffinity',
+        name: 'Replica Soft Anti Affinity',
+      }
+      replicaSoftAntiAffinityVolumes = [volume]
+      break
+    case 'updateBulkReplicaSoftAntiAffinity':
+      fields = {
+        actionKey: 'updateReplicaSoftAntiAffinity',
+        key: 'replicaSoftAntiAffinity',
+        name: 'Replica Soft Anti Affinity',
+      }
+      replicaSoftAntiAffinityVolumes = volumes
+      break
+    case 'updateReplicaZoneSoftAntiAffinity':
+      fields = {
+        actionKey: 'updateReplicaZoneSoftAntiAffinity',
+        key: 'replicaZoneSoftAntiAffinity',
+        name: 'Replica Zone Soft Anti Affinity',
+      }
+      replicaSoftAntiAffinityVolumes = [volume]
+      break
+    case 'updateBulkReplicaZoneSoftAntiAffinity':
+      fields = {
+        actionKey: 'updateReplicaZoneSoftAntiAffinity',
+        key: 'replicaZoneSoftAntiAffinity',
+        name: 'Replica Zone Soft Anti Affinity',
+      }
+      replicaSoftAntiAffinityVolumes = volumes
+      break
+    case 'updateReplicaDiskSoftAntiAffinity':
+      fields = {
+        actionKey: 'updateReplicaDiskSoftAntiAffinity',
+        key: 'replicaDiskSoftAntiAffinity',
+        name: 'Replica Disk Soft Anti Affinity',
+      }
+      replicaSoftAntiAffinityVolumes = [volume]
+      break
+    case 'updateBulkReplicaDiskSoftAntiAffinity':
+      fields = {
+        actionKey: 'updateReplicaDiskSoftAntiAffinity',
+        key: 'replicaDiskSoftAntiAffinity',
+        name: 'Replica Disk Soft Anti Affinity',
+      }
+      replicaSoftAntiAffinityVolumes = volumes
+      break
+    default:
+  }
+  return {
+    items: replicaSoftAntiAffinityVolumes,
+    visible: updateReplicaSoftAntiAffinityVisible,
+    onCancel() {
+      dispatch({
+        type: 'volume/hideUpdateReplicaSoftAntiAffinityModal',
+      })
+    },
+    onOk(v, urls) {
+      dispatch({
+        type: 'volume/updateReplicaSoftAntiAffinityModal',
+        payload: {
+          params: v,
+          urls,
+        },
+      })
+      dispatch({
+        type: 'volume/hideUpdateReplicaSoftAntiAffinityModal',
+      })
+    },
+    options: [
+      { value: 'enabled', label: 'enabled' },
+      { value: 'disabled', label: 'disabled' },
+      { value: 'ignored', label: 'ignored (follow the global setting)' },
+    ],
+    fields,
+  }
+}
+
 export function getHealthState(state) {
   return state.toLowerCase() === 'unknown' ? 'unknown' : state.hyphenToHump()
 }
@@ -288,7 +687,7 @@ export const frontends = [
 ]
 
 export function disabledSnapshotAction(volume, modelState) {
-  return !volume.actions || !volume.actions.snapshotCreate || !modelState || volume.currentImage !== volume.engineImage || volume.standby
+  return !volume.actions || !volume.actions.snapshotCreate || !modelState || volume.currentImage !== volume.image || volume.standby
 }
 
 export function extractImageVersion(image) {

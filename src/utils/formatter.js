@@ -19,8 +19,38 @@ function formatSi(val, increment = 1024) {
   return `${out} ${units[exp]}`
 }
 
+export function timeDurationStrToInt(time) {
+  if (time === undefined || time === null || typeof time !== 'string') {
+    return
+  }
+  let timeInSeconds = 0
+  const re = /((\d+)h)?((\d+)m)?((\d+)s)?/m
+  let match = re.exec(time)
+  if (match != null) {
+    if (typeof (match[2]) !== 'undefined') {
+      timeInSeconds += parseInt(match[2], 10) * 60 * 60
+    }
+    if (typeof (match[4]) !== 'undefined') {
+      timeInSeconds += parseInt(match[4], 10) * 60
+    }
+    if (typeof (match[6]) !== 'undefined') {
+      timeInSeconds += parseInt(match[6], 10)
+    }
+  }
+  return timeInSeconds
+}
+
 export function formatMib(...args) {
   return formatSi(...args)
+}
+
+// Convert selected size Bi to Gi, return size in Gi
+export function formatSize(selected, unit = 'Gi') {
+  if (selected && selected.size) {
+    const sizeMi = parseInt(selected.size, 10) / (1024 * 1024)
+    return unit === 'Gi' ? Number((sizeMi / 1024).toFixed(2)) : parseInt(sizeMi, 10)
+  }
+  return 0
 }
 
 export function utcStrToDate(utcStr) {
@@ -76,5 +106,30 @@ export function formatSnapshot(selectVolume, snapshot) {
   return {
     ...snapshot,
     backupStatusObject,
+  }
+}
+
+export function formatSystemBackupData(state, systemBackupsData, systemRestoresData) {
+  systemRestoresData = systemRestoresData.map((restore) => {
+    restore.version = ''
+    let systemBackup = systemBackupsData.find((backup) => restore.systemBackup === backup.id)
+    if (systemBackup) restore.version = systemBackup.version
+
+    return restore
+  })
+  const systemBackupsField = state.systemBackupsField
+  const systemBackupsValue = state.systemBackupsValue
+  const systemRestoresField = state.systemRestoresField
+  const systemRestoresValue = state.systemRestoresValue
+  if (systemBackupsField && systemBackupsValue) {
+    systemBackupsData = systemBackupsData.filter((item) => item[systemBackupsField] === systemBackupsValue)
+  }
+  if (systemRestoresField && systemRestoresValue) {
+    systemRestoresData = systemRestoresData.filter((item) => item[systemRestoresField] === systemRestoresValue)
+  }
+
+  return {
+    systemBackupsData,
+    systemRestoresData,
   }
 }

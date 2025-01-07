@@ -6,11 +6,13 @@ import setting from './models/setting'
 import eventlog from './models/eventlog'
 import engineimage from './models/engineimage'
 import backingImage from './models/backingImage'
+import backupTarget from './models/backupTarget'
 import backup from './models/backup'
 import snapshot from './models/snapshot'
 import recurringJob from './models/recurringJob'
 import instanceManager from './models/instanceManager'
 import orphanedData from './models/orphanedData'
+import systemBackups from './models/systemBackups'
 
 // import assets
 import './assets/iconfont/iconfont.eot'
@@ -33,11 +35,13 @@ app.model(setting)
 app.model(eventlog)
 app.model(engineimage)
 app.model(backingImage)
+app.model(backupTarget)
 app.model(backup)
 app.model(volume)
 app.model(recurringJob)
 app.model(instanceManager)
 app.model(orphanedData)
+app.model(systemBackups)
 
 // 3. Router
 app.router(routerConfig)

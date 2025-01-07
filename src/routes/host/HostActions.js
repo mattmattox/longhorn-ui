@@ -7,13 +7,14 @@ const confirm = Modal.confirm
 
 function actions({ selected, showEditDisksModal, deleteHost }) {
   const handleMenuClick = (event, record) => {
+    event.domEvent?.stopPropagation?.()
     switch (event.key) {
       case 'editDisk':
         showEditDisksModal(record)
         break
       case 'deleteHost':
         confirm({
-          title: `Are you sure you want to delete node ${selected.name} ?`,
+          title: `Are you sure you want to delete node ${selected.name}?`,
           onOk() {
             deleteHost(record)
           },
@@ -46,7 +47,6 @@ function actions({ selected, showEditDisksModal, deleteHost }) {
   const tooltipProps = { placement: 'left' }
   return (
     <DropOption
-      buttonStyle={{ padding: '0 0' }}
       menuOptions={menuOptions}
       tooltipProps={tooltipProps}
       onMenuClick={(e) => handleMenuClick(e, selected)}

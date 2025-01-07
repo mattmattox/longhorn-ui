@@ -3,12 +3,20 @@ import PropTypes from 'prop-types'
 import { Alert, Icon, Tag, Progress, Tooltip } from 'antd'
 import { formatDate } from '../../../utils/formatDate'
 import classnames from 'classnames'
-import { formatMib } from '../../../utils/formater'
-import { isSchedulingFailure, getHealthState, needToWaitDone, frontends, extractImageVersion } from '../helper/index'
+import { formatMib } from '../../../utils/formatter'
+import {
+  isSchedulingFailure,
+  getHealthState,
+  needToWaitDone,
+  frontends,
+  extractImageVersion,
+} from '../helper/index'
 import styles from './VolumeInfo.less'
+import { diskTagColor, nodeTagColor } from '../../../utils/constants'
 import { EngineImageUpgradeTooltip, ReplicaHATooltip } from '../../../components'
-import IconSnapshot from '../../../components/Icon/IconSnapshot'
+import ConditionTooltip from './ConditionTooltip'
 import { isVolumeImageUpgradable, isVolumeReplicaNotRedundancy, isVolumeRelicaLimited } from '../../../utils/filter'
+
 
 function VolumeInfo({ selectedVolume, snapshotModalState, engineImages, hosts, currentBackingImage }) {
   let errorMsg = null
@@ -25,16 +33,26 @@ function VolumeInfo({ selectedVolume, snapshotModalState, engineImages, hosts, c
   })
 
   if (isSchedulingFailure(selectedVolume)) {
-    errorMsg = (
-      <Alert
-        message="Scheduling Failure"
-        description={selectedVolume.conditions.scheduled.reason.replace(/([A-Z])/g, ' $1')}
-        type="warning"
-        className="ant-alert-error"
-        showIcon
-      />
-    )
+    const scheduledConditions = selectedVolume?.conditions?.Scheduled
+    if (scheduledConditions) {
+      const { reason, message } = scheduledConditions
+      errorMsg = (
+        <Alert
+          message="Scheduling Failure"
+          description={
+            <div>
+              {reason && <div>{reason.replace(/([A-Z])/g, ' $1')}</div>}
+              {message && <div>{`Error Message: ${message}`}</div>}
+            </div>
+          }
+          type="warning"
+          className="ant-alert-error"
+          showIcon
+        />
+      )
+    }
   }
+
   const computeActualSize = selectedVolume && selectedVolume.controllers && selectedVolume.controllers[0] && selectedVolume.controllers[0].actualSize ? selectedVolume.controllers[0].actualSize : ''
   const defaultImage = engineImages.find(image => image.default === true)
   const healthState = getHealthState(selectedVolume.robustness)
@@ -83,7 +101,7 @@ function VolumeInfo({ selectedVolume, snapshotModalState, engineImages, hosts, c
 
   let forMapNode = (tag, index) => {
     return (
-      <Tag key={index} color="rgb(39, 174, 95)">
+      <Tag key={index} color={nodeTagColor}>
         {tag}
       </Tag>
     )
@@ -91,7 +109,7 @@ function VolumeInfo({ selectedVolume, snapshotModalState, engineImages, hosts, c
 
   let forMapDisk = (tag, index) => {
     return (
-      <Tag key={index} color="#108eb9">
+      <Tag key={index} color={diskTagColor}>
         {tag}
       </Tag>
     )
@@ -106,7 +124,7 @@ function VolumeInfo({ selectedVolume, snapshotModalState, engineImages, hosts, c
     tagNodeChild = selectedVolume.nodeSelector.map(forMapNode)
   }
 
-  // resotring progress
+  // resorting progress
   let restoreProgress = null
   if (selectedVolume.restoreStatus && selectedVolume.restoreStatus.length > 0) {
     let total = 0
@@ -133,23 +151,65 @@ function VolumeInfo({ selectedVolume, snapshotModalState, engineImages, hosts, c
   }
 
   const volumeSizeEle = () => {
-    let oldSize = selectedVolume && selectedVolume.controllers && selectedVolume.controllers[0] && selectedVolume.controllers[0].size ? selectedVolume.controllers[0].size : ''
-    let isExpanding = (selectedVolume.size !== oldSize && selectedVolume.state === 'attached')
-    let message = `The volume is in expansion progress from size ${formatMib(oldSize)} to size ${formatMib(selectedVolume.size)}`
+    let expectedSize = selectedVolume.size
+    let currentSize = selectedVolume?.controllers[0]?.size ?? ''
+    let isExpanding = selectedVolume?.controllers[0] && parseInt(expectedSize, 10) !== parseInt(currentSize, 10) && selectedVolume.state === 'attached' && parseInt(currentSize, 10) !== 0
+    // The expected size of engine should not be smaller than the current size.
+    let expandingFailed = isExpanding && selectedVolume?.controllers[0]?.lastExpansionError !== ''
+    let message = ''
+    if (expandingFailed) {
+      message = (<div>
+        <div>Expansion Error: {selectedVolume.controllers[0].lastExpansionError}</div>
+        <div>Note: You can cancel the expansion to avoid volume crash</div>
+      </div>)
+    } else if (isExpanding) {
+      message = `The volume is in expansion progress from size ${formatMib(currentSize)} to size ${formatMib(expectedSize)}`
+    }
 
-    return (<div style={{ display: 'inline-block' }}>
-      {isExpanding ? <Tooltip title={message}>
-        <div style={{ position: 'relative', color: 'rgb(16, 142, 233)' }}>
-          <div className={styles.expendVolumeIcon}>
-            <Icon type="loading" />
+    return (
+      <div style={{ display: 'inline-block' }}>
+        {isExpanding && !expandingFailed ? <Tooltip title={message}>
+          <div style={{ position: 'relative', color: 'rgb(16, 142, 233)' }}>
+            <div className={styles.expendVolumeIcon}>
+              <Icon type="loading" />
+            </div>
+            <div style={{ fontSize: '20px' }}>
+              <Icon type="arrows-alt" style={{ transform: 'rotate(45deg)' }} />
+            </div>
           </div>
-          <div style={{ fontSize: '20px' }}>
-            <Icon type="arrows-alt" style={{ transform: 'rotate(45deg)' }} />
+        </Tooltip> : <Tooltip title={message}>
+          <div className={expandingFailed ? 'error' : ''}>
+            {expandingFailed ? <div>
+              <Icon style={{ fontSize: '20px', marginRight: '15px' }} type="info-circle" />
+              <div className={'error'} style={{ position: 'relative', display: 'inline-block' }}>
+                <div className={styles.expendVolumeIcon}>
+                  <Icon type="loading" />
+                </div>
+                <div style={{ fontSize: '20px' }}>
+                  <Icon type="arrows-alt" style={{ transform: 'rotate(45deg)' }} />
+                </div>
+              </div>
+            </div> : formatMib(expectedSize)}
           </div>
-        </div>
-      </Tooltip> : <div>{formatMib(selectedVolume.size)}</div>}
-    </div>)
+        </Tooltip>}
+      </div>
+    )
   }
+
+  const addGlobalSettingDescription = (text) => {
+    if (text) {
+      return (
+        <Tooltip title={text === 'ignored' ? 'The is the default option that instructs Longhorn to inherit from the global setting.' : ''}>{text}</Tooltip>
+      )
+    }
+    return text
+  }
+
+  const renderLabelTooltip = (title) => (
+    <Tooltip overlayClassName={styles.labelTooltip} title={title}>
+      <Icon type="info-circle" />
+    </Tooltip>
+  )
 
   return (
     <div>
@@ -179,46 +239,23 @@ function VolumeInfo({ selectedVolume, snapshotModalState, engineImages, hosts, c
             Conditions:
           </span>
           <div className={styles.control} style={{ display: 'flex' }}>
-            {selectedVolume && selectedVolume.conditions && Object.keys(selectedVolume.conditions).filter((key) => {
-              return key === 'restore' || key === 'scheduled' || key === 'toomanysnapshots'
-            }).map((key) => {
-              let title = selectedVolume.conditions[key] ? (<div>
-                {selectedVolume.conditions[key].type && <div style={{ marginBottom: 5 }}>Name: {selectedVolume.conditions[key].type}</div>}
-                {selectedVolume.conditions[key].lastProbeTime && <div style={{ marginBottom: 5 }}>Last Probe Time: {formatDate(selectedVolume.conditions[key].lastProbeTime)}</div>}
-                {selectedVolume.conditions[key].lastTransitionTime && <div style={{ marginBottom: 5 }}>Last Transition Time: {formatDate(selectedVolume.conditions[key].lastTransitionTime)}</div>}
-                {selectedVolume.conditions[key].message && <div style={{ marginBottom: 5 }}>Message: {selectedVolume.conditions[key].message}</div>}
-                {selectedVolume.conditions[key].reason && <div style={{ marginBottom: 5 }}>Reason: {selectedVolume.conditions[key].reason}</div>}
-                {selectedVolume.conditions[key].status && <div style={{ marginBottom: 5 }}>Status: {selectedVolume.conditions[key].status}</div>}
-              </div>) : ''
-              let icon = ''
-              if (key === 'toomanysnapshots') {
-                if (selectedVolume.conditions[key] && selectedVolume.conditions[key].status && (selectedVolume.conditions[key].status.toLowerCase() === 'false' || selectedVolume.conditions[key].reason === '')) {
-                  icon = <IconSnapshot fill="#27ae60" />
-                  title = (<div>
-                    {selectedVolume.conditions[key].type && <div style={{ marginBottom: 5 }}>Name: {selectedVolume.conditions[key].type}</div>}
-                    {selectedVolume.conditions[key].lastTransitionTime && <div style={{ marginBottom: 5 }}>Last Transition Time: {formatDate(selectedVolume.conditions[key].lastTransitionTime)}</div>}
-                    <div style={{ marginBottom: 5 }}>Status: The snapshot number threshold has not been exceeded</div>
-                  </div>)
-                } else {
-                  icon = <IconSnapshot fill="#f15354" />
-                }
-              } else if (key === 'restore') {
-                icon = selectedVolume.conditions[key].status && (selectedVolume.conditions[key].status.toLowerCase() === 'true' || selectedVolume.conditions[key].reason === '') ? <Icon className="healthy" style={{ marginRight: 5, color: selectedVolume.conditions[key].reason === '' && selectedVolume.conditions[key].status.toLowerCase() === 'false' ? '#666666' : '#27ae60' }} type="check-circle" /> : <Icon className="faulted" style={{ marginRight: 5 }} type="exclamation-circle" />
-              } else {
-                icon = selectedVolume.conditions[key].status && selectedVolume.conditions[key].status.toLowerCase() === 'true' ? <Icon className="healthy" style={{ marginRight: 5 }} type="check-circle" /> : <Icon className="faulted" style={{ marginRight: 5 }} type="exclamation-circle" />
-              }
-              let text = key !== 'toomanysnapshots' ? selectedVolume.conditions[key].type : ''
-
-              return (<Tooltip key={key} title={title}><div style={{ display: 'flex', alignItems: 'center', marginRight: 10 }}>
-                  {icon}{text}
-                </div></Tooltip>)
-            })}
-            </div>
+            {selectedVolume && selectedVolume.conditions && Object.keys(selectedVolume.conditions).filter((key) => ['Restore', 'Scheduled', 'TooManySnapshots'].includes(key)).map((key) => <ConditionTooltip key={key} selectedVolume={selectedVolume} conditionKey={key} />)}
+          </div>
         </div>
       </div>
       <div className={styles.row}>
         <span className={styles.label}> Frontend:</span>
-        {(frontends.find(item => item.value === selectedVolume.frontend) || '').label}
+        {selectedVolume.disableFrontend ? <Tooltip title={'Attach volume without enabling frontend. Volume data will not be accessible while attached.'}>
+            <Icon type="disconnect" className="healthy" />
+          </Tooltip> : (frontends.find(item => item.value === selectedVolume.frontend) || '').label}
+      </div>
+      <div className={styles.row}>
+        <span className={styles.label}> Backup Target:</span>
+        {selectedVolume.backupTargetName || ''}
+      </div>
+      <div className={styles.row}>
+        <span className={styles.label}> Data Engine:</span>
+        {selectedVolume.dataEngine}
       </div>
       {!selectedVolume.disableFrontend ? <div className={styles.row}>
         <span className={styles.label}> Attached Node &amp; Endpoint:</span>
@@ -228,12 +265,19 @@ function VolumeInfo({ selectedVolume, snapshotModalState, engineImages, hosts, c
         {selectedVolume.controllers ? selectedVolume.controllers.filter(item => item.hostId !== '').map(item => <div style={{ fontFamily: 'monospace', margin: '2px 0px' }} key={item.hostId}>{item.hostId}</div>) : ''}
       </div>}
       <div className={styles.row}>
-        <span className={styles.label}> Size:</span>
-        {/* {formatMib(selectedVolume.size)} */}
+        <span className={styles.label}>
+          <span>Size</span>
+          {renderLabelTooltip('Amount of space available to the volume when in use. This is the size that you specified when you created the volume.')}
+          <span>:</span>
+        </span>
         {volumeSizeEle()}
       </div>
       <div className={styles.row}>
-        <span className={styles.label}>Actual Size:</span>
+        <span className={styles.label}>
+          <span>Actual Size</span>
+          {renderLabelTooltip('Amount of space used by the volume head and snapshots. This can exceed the value of the "Size" field.')}
+          <span>:</span>
+        </span>
         {state ? formatMib(computeActualSize) : 'Unknown'}
       </div>
       <div className={styles.row}>
@@ -255,10 +299,12 @@ function VolumeInfo({ selectedVolume, snapshotModalState, engineImages, hosts, c
         </div>
       </div> : ''}
       <div className={styles.row}>
-        <Tooltip title={'Provides the binary to start and communicate with the volume engine/replicas.'}>
-          <span className={styles.label}> Engine Image:</span>
-        </Tooltip>
-        {selectedVolume.engineImage}
+        <span className={styles.label}>
+          <span>Engine Image</span>
+          {renderLabelTooltip('Provides the binary to start and communicate with the volume engine/replicas.')}
+          <span>:</span>
+        </span>
+        {selectedVolume.image}
       </div>
       <div className={styles.row}>
         <span className={styles.label}> Created:</span>
@@ -286,13 +332,47 @@ function VolumeInfo({ selectedVolume, snapshotModalState, engineImages, hosts, c
       </div>
       <div className={styles.row}>
         <span className={styles.label}> Replicas Auto Balance:</span>
-        {selectedVolume.replicaAutoBalance ? selectedVolume.replicaAutoBalance : ''}
+        {addGlobalSettingDescription(selectedVolume?.replicaAutoBalance)}
       </div>
       <div className={styles.row}>
-        <Tooltip title={'Manages the engine/replica instances’ life cycle on the node.'}>
-          <span className={styles.label}> Instance Manager:</span>
-        </Tooltip>
+        <span className={styles.label}> Snapshot Data Integrity:</span>
+        {addGlobalSettingDescription(selectedVolume?.snapshotDataIntegrity)}
+      </div>
+       <div className={styles.row}>
+        <span className={styles.label}> Snapshot Max Count:</span>
+        {selectedVolume.snapshotMaxCount}
+      </div>
+      <div className={styles.row}>
+        <span className={styles.label}> Snapshot Max Size:</span>
+        {formatMib(selectedVolume.snapshotMaxSize)}
+      </div>
+      <div className={styles.row}>
+        <span className={styles.label}>
+          <span>Instance Manager</span>
+          {renderLabelTooltip('Manages the engine/replica instances’ life cycle on the node.')}
+          <span>:</span>
+        </span>
         {selectedVolume.controllers ? selectedVolume.controllers.filter(item => item.instanceManagerName !== '').map(item => <div key={item.hostId} style={{ fontFamily: 'monospace', margin: '2px 0px' }}> <span style={{ backgroundColor: '#f2f4f5' }}> {item.instanceManagerName} </span></div>) : ''}
+      </div>
+      <div className={styles.row}>
+        <span className={styles.label}> Allow snapshots removal during trim:</span>
+        {addGlobalSettingDescription(selectedVolume?.unmapMarkSnapChainRemoved)}
+      </div>
+      <div className={styles.row}>
+        <span className={styles.label}> Replica Soft Anti Affinity:</span>
+        {selectedVolume?.replicaSoftAntiAffinity}
+      </div>
+      <div className={styles.row}>
+        <span className={styles.label}> Replica Zone Soft Anti Affinity:</span>
+        {selectedVolume?.replicaZoneSoftAntiAffinity}
+      </div>
+      <div className={styles.row}>
+        <span className={styles.label}> Replica Disk Soft Anti Affinity:</span>
+        {selectedVolume?.replicaDiskSoftAntiAffinity}
+      </div>
+      <div className={styles.row}>
+        <span className={styles.label}> Freeze Filesystem For Snapshot:</span>
+        {addGlobalSettingDescription(selectedVolume?.freezeFilesystemForSnapshot)}
       </div>
       { selectedVolume.kubernetesStatus ? <div>
           { selectedVolume.kubernetesStatus.lastPVCRefAt ? <div className={styles.row}>

@@ -1,6 +1,7 @@
 import { create, deleteVolume, query, execAction, createVolumePV, createVolumePVC, createVolumeAllPVC, volumeActivate, getNodeTags, getDiskTags, expandVolume, cancelExpansion, createRecurringJob, recurringJobAdd, getVolumeRecurringJobList, removeVolumeRecurringJob, updateRecurringJob } from '../services/volume'
 import { query as getRecurringJob } from '../services/recurringJob'
 import { wsChanges, updateState } from '../utils/websocket'
+import { message } from 'antd'
 import { sortVolume } from '../utils/sort'
 import { routerRedux } from 'dva/router'
 import { getSorter, saveSorter } from '../utils/store'
@@ -13,7 +14,10 @@ export default {
     ws: null,
     data: [],
     resourceType: 'volume',
+    cloneVolumeType: 'volume', // volume or snapshot
+    snapshotsOptions: [],
     selected: null,
+    selectSnapshot: null,
     selectedRows: [],
     WorkloadDetailModalItem: {},
     volumeRecurringJobs: [],
@@ -30,7 +34,9 @@ export default {
     WorkloadDetailModalVisible: false,
     recurringJobModalVisible: false,
     attachHostModalVisible: false,
+    bulkCloneVolumeVisible: false,
     bulkAttachHostModalVisible: false,
+    detachHostModalVisible: false,
     engineUpgradeModalVisible: false,
     bulkEngineUpgradeModalVisible: false,
     updateReplicaCountModalVisible: false,
@@ -45,12 +51,25 @@ export default {
     bulkExpandVolumeModalVisible: false,
     updateBulkReplicaCountModalVisible: false,
     customColumnVisible: false,
+    updateBackupTargetModalVisible: false,
+    updateBulkBackupTargetModalVisible: false,
+    volumeCloneModalVisible: false,
     updateDataLocalityModalVisible: false,
+    updateSnapshotMaxCountModalVisible: false,
+    updateSnapshotMaxCountModalKey: Math.random(),
+    updateSnapshotMaxSizeModalVisible: false,
+    updateSnapshotMaxSizeModalKey: Math.random(),
     updateBulkDataLocalityModalVisible: false,
     updateAccessModeModalVisible: false,
     updateBulkAccessModeModalVisible: false,
-    confirmModalWithWorkloadVisible: false,
     updateReplicaAutoBalanceModalVisible: false,
+    unmapMarkSnapChainRemovedModalVisible: false,
+    bulkUnmapMarkSnapChainRemovedModalVisible: false,
+    updateSnapshotDataIntegrityModalVisible: false,
+    updateBulkSnapshotDataIntegrityModalVisible: false,
+    updateFreezeFilesystemForSnapshotModalVisible: false,
+    updateBulkFreezeFilesystemForSnapshotModalVisible: false,
+    isDetachBulk: false,
     changeVolumeActivate: '',
     defaultPvOrPvcName: '',
     defaultNamespace: '',
@@ -58,6 +77,9 @@ export default {
     defaultPVCName: '',
     previousNamespace: '',
     recurringJobList: [],
+    softAntiAffinityKey: '',
+    updateReplicaSoftAntiAffinityVisible: false,
+    updateBackupTargetModalKey: Math.random(),
     changeVolumeModalKey: Math.random(),
     bulkChangeVolumeModalKey: Math.random(),
     bulkExpandVolumeModalKey: Math.random(),
@@ -70,8 +92,11 @@ export default {
     createPVCModalKey: Math.random(),
     createPVModalKey: Math.random(),
     attachHostModalKey: Math.random(),
+    detachHostModalKey: Math.random(),
     bulkAttachHostModalKey: Math.random(),
     engineUpgradeModaKey: Math.random(),
+    volumeCloneModalKey: Math.random(),
+    updateBulkBackupTargetModalKey: Math.random(),
     bulkEngineUpgradeModalKey: Math.random(),
     expansionVolumeSizeModalKey: Math.random(),
     updateReplicaCountModalKey: Math.random(),
@@ -81,8 +106,14 @@ export default {
     updateBulkDataLocalityModalKey: Math.random(),
     updateAccessModeModalKey: Math.random(),
     updateBulkAccessModeModalKey: Math.random(),
-    confirmModalWithWorkloadKey: Math.random(),
     updateReplicaAutoBalanceModalKey: Math.random(),
+    unmapMarkSnapChainRemovedModalKey: Math.random(),
+    bulkUnmapMarkSnapChainRemovedModalKey: Math.random(),
+    updateSnapshotDataIntegrityModalKey: Math.random(),
+    updateBulkSnapshotDataIntegrityModalKey: Math.random(),
+    updateReplicaSoftAntiAffinityModalKey: Math.random(),
+    updateFreezeFilesystemForSnapshotModalKey: Math.random(),
+    updateBulkFreezeFilesystemForSnapshotModalKey: Math.random(),
     socketStatus: 'closed',
     sorter: getSorter('volumeList.sorter'),
     customColumnList: window.__column__, // eslint-disable-line no-underscore-dangle
@@ -146,14 +177,21 @@ export default {
     *detach({
       payload,
     }, { call, put }) {
-      yield call(execAction, payload.url)
+      yield payload.map(item => call(execAction, item.url, item.data))
       yield put({ type: 'query' })
+      yield put({ type: 'hideDetachHostModal' })
     },
     *attach({
       payload,
     }, { call, put }) {
       yield put({ type: 'hideAttachHostModal' })
-      yield call(execAction, payload.url, { hostId: payload.host, disableFrontend: payload.disableFrontend })
+      yield call(execAction, payload.url, {
+        hostId: payload.host,
+        disableFrontend: payload.disableFrontend,
+        AttachedBy: '',
+        attacherType: '',
+        AttachmentID: 'longhorn-ui',
+      })
       yield put({ type: 'query' })
     },
     *salvage({
@@ -170,9 +208,52 @@ export default {
       yield call(create, payload)
       yield put({ type: 'query' })
     },
-    *showCreateVolumeModalBefore({
+    *createClonedVolume({
       payload,
     }, { call, put }) {
+      yield put({ type: 'hideCloneVolumeModal' })
+      const resp = yield call(create, payload)
+      if (resp && resp.status === 200) {
+        message.success(`New volume (${payload.name}) created successfully`, 5)
+        yield put({ type: 'query' })
+      }
+    },
+    *bulkCloneVolume({
+      payload,
+    }, { call, put }) {
+      yield put({ type: 'hideBulkCloneVolume' })
+      for (const vol of payload) {
+        yield call(create, vol)
+      }
+      yield put({ type: 'query' })
+    },
+    *showBulkCloneVolumeModalBefore({
+      payload,
+    }, { call, put }) {
+      yield put({ type: 'showBulkCloneVolume', payload })
+
+      const nodeTags = yield call(getNodeTags, payload)
+      const diskTags = yield call(getDiskTags, payload)
+      if (nodeTags.status === 200 && diskTags.status === 200) {
+        yield put({ type: 'changeTagsLoading', payload: { nodeTags: nodeTags.data, diskTags: diskTags.data, tagsLoading: false } })
+      } else {
+        yield put({ type: 'changeTagsLoading', payload: { tagsLoading: false } })
+      }
+    },
+    *showCloneVolumeModalBefore({
+      payload,
+    }, { call, put }) {
+      yield put({ type: 'showCloneVolumeModal', payload })
+
+      const nodeTags = yield call(getNodeTags)
+      const diskTags = yield call(getDiskTags)
+      if (nodeTags.status === 200 && diskTags.status === 200) {
+        yield put({ type: 'changeTagsLoading', payload: { nodeTags: nodeTags.data, diskTags: diskTags.data, tagsLoading: false } })
+      } else {
+        yield put({ type: 'changeTagsLoading', payload: { tagsLoading: false } })
+      }
+    },
+    *showCreateVolumeModalBefore({ payload }, { call, put }) {
       yield put({ type: 'showCreateVolumeModal' })
       const nodeTags = yield call(getNodeTags, payload)
       const diskTags = yield call(getDiskTags, payload)
@@ -180,6 +261,22 @@ export default {
         yield put({ type: 'changeTagsLoading', payload: { nodeTags: nodeTags.data, diskTags: diskTags.data, tagsLoading: false } })
       } else {
         yield put({ type: 'changeTagsLoading', payload: { tagsLoading: false } })
+      }
+    },
+    *getSingleVolumeSnapshots({
+      payload,
+    }, { call, put }) {
+      const url = payload.actions.snapshotList
+      if (!url) {
+        yield put({ type: 'setSnapshotsData', payload: { snapshotsOptions: [] } })
+        return
+      }
+      const resp = yield call(execAction, url)
+      if (resp?.status === 200 && resp.data) {
+        yield put({ type: 'setSnapshotsData', payload: { snapshotsOptions: resp.data } })
+      } else {
+        message.error(`Failed to get ${payload.name} snapshots`, 5)
+        yield put({ type: 'setSnapshotsData', payload: { snapshotsOptions: [] } })
       }
     },
     *delete({
@@ -229,11 +326,43 @@ export default {
       yield call(execAction, payload.url, payload.params)
       yield put({ type: 'query' })
     },
+    *snapshotMaxCountUpdate({
+      payload,
+    }, { call, put }) {
+      yield put({ type: 'hideUpdateSnapshotMaxCountModal' })
+      yield call(execAction, payload.url, payload.params)
+      yield put({ type: 'query' })
+    },
+    *snapshotMaxSizeUpdate({
+      payload,
+    }, { call, put }) {
+      yield put({ type: 'hideUpdateSnapshotMaxSizeModal' })
+      yield call(execAction, payload.url, payload.params)
+      yield put({ type: 'query' })
+    },
     *bulkReplicaCountUpdate({
       payload,
     }, { call, put }) {
       yield put({ type: 'hideUpdateBulkReplicaCountModal' })
       yield payload.urls.map(url => call(execAction, url, payload.params))
+      yield put({ type: 'query' })
+    },
+    *updateUnmapMarkSnapChainRemoved({
+      payload,
+    }, { call, put }) {
+      yield put({ type: 'hideUpdateUnmapMarkSnapChainRemovedModal' })
+      yield call(execAction, payload.url, payload.params)
+      yield put({ type: 'query' })
+    },
+    *updateBulkUnmapMarkSnapChainRemoved({
+      payload,
+    }, { call, put }) {
+      yield put({ type: 'hideBulkUpdateUnmapMarkSnapChainRemovedModal' })
+      if (payload?.urls?.length > 0) {
+        for (let i = 0; i < payload.urls.length; i++) {
+          yield call(execAction, payload.urls[i], payload.params)
+        }
+      }
       yield put({ type: 'query' })
     },
     *dataLocalityUpdate({
@@ -247,6 +376,52 @@ export default {
       payload,
     }, { call, put }) {
       yield put({ type: 'hideUpdateBulkDataLocalityModal' })
+      yield payload.urls.map(url => call(execAction, url, payload.params))
+      yield put({ type: 'query' })
+    },
+    *updateBulkSnapshotDataIntegrity({
+      payload,
+    }, { call, put }) {
+      yield put({ type: 'hideUpdateBulkSnapshotDataIntegrityModal' })
+      yield payload.urls.map(url => call(execAction, url, payload.params))
+      yield put({ type: 'query' })
+    },
+    *updateSnapshotDataIntegrity({
+      payload,
+    }, { call, put }) {
+      yield put({ type: 'hideUpdateSnapshotDataIntegrityModal' })
+      yield call(execAction, payload.url, payload.params)
+      yield put({ type: 'query' })
+    },
+    *updateFreezeFilesystemForSnapshot({
+      payload,
+    }, { call, put }) {
+      yield put({ type: 'hideUpdateFreezeFilesystemForSnapshotModal' })
+      yield call(execAction, payload.url, payload.params)
+      yield put({ type: 'query' })
+    },
+    *updateBulkFreezeFilesystemForSnapshot({
+      payload,
+    }, { call, put }) {
+      yield put({ type: 'hideUpdateBulkFreezeFilesystemForSnapshotModal' })
+      if (payload?.urls?.length > 0) {
+        for (let i = 0; i < payload.urls.length; i++) {
+          yield call(execAction, payload.urls[i], payload.params)
+        }
+      }
+      yield put({ type: 'query' })
+    },
+    *backupTargetUpdate({
+      payload,
+    }, { call, put }) {
+      yield put({ type: 'hideUpdateBackupTargetModal' })
+      yield call(execAction, payload.url, payload.params)
+      yield put({ type: 'query' })
+    },
+    *bulkBackupTargetUpdate({
+      payload,
+    }, { call, put }) {
+      yield put({ type: 'hideUpdateBulkBackupTargetModal' })
       yield payload.urls.map(url => call(execAction, url, payload.params))
       yield put({ type: 'query' })
     },
@@ -271,6 +446,12 @@ export default {
       yield payload.urls.map(url => call(execAction, url, payload.params))
       yield put({ type: 'query' })
     },
+    *updateReplicaSoftAntiAffinityModal({
+      payload,
+    }, { call, put }) {
+      yield payload.urls.map(url => call(execAction, url, payload.params))
+      yield put({ type: 'query' })
+    },
     *bulkDelete({
       payload,
     }, { call, put }) {
@@ -284,23 +465,31 @@ export default {
       yield payload.urls.map(url => call(execAction, url, { image: payload.image }))
       yield put({ type: 'query' })
     },
-    *bulkDetach({
-      payload,
-    }, { call, put }) {
-      yield payload.map(url => call(execAction, url))
-      yield put({ type: 'query' })
-    },
     *bulkAttach({
       payload,
     }, { call, put }) {
       yield put({ type: 'hideBulkAttachHostModal' })
-      yield payload.urls.map(url => call(execAction, url, { hostId: payload.host, disableFrontend: payload.disableFrontend }))
+      yield payload.urls.map(url => call(execAction, url, {
+        hostId: payload.host,
+        disableFrontend: payload.disableFrontend,
+        AttachedBy: '',
+        attacherType: '',
+        AttachmentID: 'longhorn-ui',
+      }))
       yield put({ type: 'query' })
     },
     *bulkBackup({
       payload,
     }, { put }) {
-      yield payload.actions.map(item => put({ type: 'snapshotCreateThenBackup', payload: { snapshotCreateUrl: item.snapshotCreateUrl, snapshotBackupUrl: item.snapshotBackupUrl, labels: payload.labels } }))
+      yield payload.actions.map(item => put({
+        type: 'snapshotCreateThenBackup',
+        payload: {
+          snapshotCreateUrl: item.snapshotCreateUrl,
+          snapshotBackupUrl: item.snapshotBackupUrl,
+          labels: payload.labels,
+          backupMode: payload.backupMode,
+        },
+      }))
       yield put({ type: 'query' })
     },
     *createPVAndPVC({
@@ -314,7 +503,8 @@ export default {
           pvAction.push(item)
         }
       })
-      yield pvAction.map(item => call(createVolumePV, { pvName: item.name, fsType }, item.actions.pvCreate))
+      const storageClassName = payload.params.storageClassName
+      yield pvAction.map(item => call(createVolumePV, { pvName: item.name, fsType, storageClassName }, item.actions.pvCreate))
       if (payload.params.createPvcChecked) {
         if (payload.params.previousChecked) {
           yield payload.action.map(item => {
@@ -326,11 +516,17 @@ export default {
             if (item.kubernetesStatus && item.kubernetesStatus.pvcName) {
               pvcname = item.kubernetesStatus.pvcName
             }
-            return call(createVolumeAllPVC, namespace, pvcname, item.actions.pvcCreate)
+            return call(createVolumeAllPVC, {
+              namespace,
+              pvcname,
+            }, item.actions.pvcCreate)
           })
         } else {
           yield payload.action.map(item => {
-            return call(createVolumeAllPVC, payload.params.namespace, item.name, item.actions.pvcCreate)
+            return call(createVolumeAllPVC, {
+              namespace: payload.params.namespace,
+              pvcname: item.name,
+            }, item.actions.pvcCreate)
           })
         }
       }
@@ -340,8 +536,8 @@ export default {
       payload,
     }, { call, put }) {
       yield put({ type: 'hideCreatePVCAndPVSingleModal' })
-      if (payload.selectedVolume && payload.selectedVolume.kubernetesStatus && !payload.selectedVolume.kubernetesStatus.pvName && payload.params && payload.params.pvName && payload.params.fsType) {
-        let params = { pvName: payload.params.pvName, fsType: payload.params.fsType }
+      if (payload?.selectedVolume?.kubernetesStatus && !payload.selectedVolume.kubernetesStatus.pvName && payload.params && payload.params.pvName && payload.params.fsType) {
+        let params = { pvName: payload.params.pvName, fsType: payload.params.fsType, storageClassName: payload.params.storageClassName }
         if (payload.selectedVolume.encrypted) {
           Object.assign(params, { secretNamespace: payload.params.secretNamespace, secretName: payload.params.secretName })
         }
@@ -392,7 +588,7 @@ export default {
       payload,
     }, { call }) {
       const snapshot = yield call(execAction, payload.snapshotCreateUrl, {})
-      yield call(execAction, payload.snapshotBackupUrl, { name: snapshot.name, labels: payload.labels })
+      yield call(execAction, payload.snapshotBackupUrl, { name: snapshot.name, labels: payload.labels, backupMode: payload.backupMode })
     },
     *createRecurringJob({
       payload,
@@ -516,6 +712,20 @@ export default {
         if (callback) callback(recurringJobListResp.data)
       }
     },
+    *trimFilesystem({
+      payload,
+    }, { call, put }) {
+      yield call(execAction, payload.url, payload.params)
+      yield put({ type: 'query' })
+    },
+    *trimBulkFilesystem({
+      payload,
+    }, { call, put }) {
+      for (let i = 0; i < payload.urls.length; i++) {
+        if (payload?.urls[i]) yield call(execAction, payload.urls[i], {})
+      }
+      yield put({ type: 'query' })
+    },
     *startWS({
       payload,
     }, { select }) {
@@ -546,8 +756,11 @@ export default {
     updateBackground(state, action) {
       return updateState(state, action)
     },
-    showChangeVolumeModal(state, aciton) {
-      return { ...state, changeVolumeActivate: aciton.payload, changeVolumeModalVisible: true, changeVolumeModalKey: Math.random() }
+    setSnapshotsData(state, action) {
+      return { ...state, ...action.payload }
+    },
+    showChangeVolumeModal(state, action) {
+      return { ...state, changeVolumeActivate: action.payload, changeVolumeModalVisible: true, changeVolumeModalKey: Math.random() }
     },
     hideChangeVolumeModal(state) {
       return { ...state, changeVolumeActivate: '', changeVolumeModalVisible: false, changeVolumeModalKey: Math.random() }
@@ -596,7 +809,7 @@ export default {
       return { ...state, createPVAndPVCVisible: false, nameSpaceDisabled: false, previousChecked: false, createPVAndPVCModalKey: Math.random() }
     },
     hideCreateVolumeModal(state) {
-      return { ...state, createVolumeModalVisible: false, tagsLoading: true }
+      return { ...state, createVolumeModalVisible: false, tagsLoading: true, snapshotsOptions: [] }
     },
     showExpansionVolumeSizeModal(state, action) {
       return { ...state, selected: action.payload, expansionVolumeSizeModalVisible: true, expansionVolumeSizeModalKey: Math.random() }
@@ -619,11 +832,20 @@ export default {
     hideRecurringJobModal(state) {
       return { ...state, recurringJobModalVisible: false, recurringJobModalKey: Math.random() }
     },
+    showCloneVolumeModal(state, action) {
+      return { ...state, ...action.payload, volumeCloneModalVisible: true, volumeCloneModalKey: Math.random() }
+    },
     showAttachHostModal(state, action) {
       return { ...state, ...action.payload, attachHostModalVisible: true, attachHostModalKey: Math.random() }
     },
+    showBulkCloneVolume(state, action) {
+      return { ...state, ...action.payload, bulkCloneVolumeVisible: true }
+    },
     showBulkAttachHostModal(state, action) {
       return { ...state, ...action.payload, bulkAttachHostModalVisible: true, bulkAttachHostModalKey: Math.random() }
+    },
+    hideBulkCloneVolume(state) {
+      return { ...state, bulkCloneVolumeVisible: false }
     },
     hideAttachHostModal(state) {
       return { ...state, attachHostModalVisible: false }
@@ -631,11 +853,20 @@ export default {
     hideBulkAttachHostModal(state) {
       return { ...state, bulkAttachHostModalVisible: false }
     },
+    showDetachHostModal(state, action) {
+      return { ...state, ...action.payload, detachHostModalVisible: true, detachHostModalKey: Math.random() }
+    },
+    hideDetachHostModal(state) {
+      return { ...state, detachHostModalVisible: false }
+    },
     showEngineUpgradeModal(state, action) {
       return { ...state, ...action.payload, engineUpgradeModalVisible: true, engineUpgradeModaKey: Math.random() }
     },
     showBulkEngineUpgradeModal(state, action) {
       return { ...state, ...action.payload, bulkEngineUpgradeModalVisible: true, bulkEngineUpgradeModalKey: Math.random() }
+    },
+    hideCloneVolumeModal(state) {
+      return { ...state, volumeCloneModalVisible: false }
     },
     hideEngineUpgradeModal(state) {
       return { ...state, engineUpgradeModalVisible: false }
@@ -661,8 +892,56 @@ export default {
     showUpdateDataLocality(state, action) {
       return { ...state, ...action.payload, updateDataLocalityModalVisible: true, updateDataLocalityModalKey: Math.random() }
     },
+    showUpdateSnapshotMaxCountModal(state, action) {
+      return { ...state, ...action.payload, updateSnapshotMaxCountModalVisible: true, updateSnapshotMaxCountModalKey: Math.random() }
+    },
+    hideUpdateSnapshotMaxCountModal(state) {
+      return { ...state, updateSnapshotMaxCountModalVisible: false }
+    },
+    showUpdateSnapshotMaxSizeModal(state, action) {
+      return { ...state, ...action.payload, updateSnapshotMaxSizeModalVisible: true, updateSnapshotMaxSizeModalKey: Math.random() }
+    },
+    hideUpdateSnapshotMaxSizeModal(state) {
+      return { ...state, updateSnapshotMaxSizeModalVisible: false }
+    },
+    showUnmapMarkSnapChainRemovedModal(state, action) {
+      return { ...state, ...action.payload, unmapMarkSnapChainRemovedModalVisible: true, unmapMarkSnapChainRemovedModalKey: Math.random() }
+    },
+    hideUpdateUnmapMarkSnapChainRemovedModal(state, action) {
+      return { ...state, ...action.payload, unmapMarkSnapChainRemovedModalVisible: false, unmapMarkSnapChainRemovedModalKey: Math.random() }
+    },
+    showBulkUnmapMarkSnapChainRemovedModal(state, action) {
+      return { ...state, ...action.payload, bulkUnmapMarkSnapChainRemovedModalVisible: true, bulkUnmapMarkSnapChainRemovedModalKey: Math.random() }
+    },
+    hideBulkUpdateUnmapMarkSnapChainRemovedModal(state, action) {
+      return { ...state, ...action.payload, bulkUnmapMarkSnapChainRemovedModalVisible: false, bulkUnmapMarkSnapChainRemovedModalKey: Math.random() }
+    },
+    showUpdateSnapshotDataIntegrityModal(state, action) {
+      return { ...state, ...action.payload, updateSnapshotDataIntegrityModalVisible: true, updateSnapshotDataIntegrityModalKey: Math.random() }
+    },
+    showUpdateBulkSnapshotDataIntegrityModal(state, action) {
+      return { ...state, ...action.payload, updateBulkSnapshotDataIntegrityModalVisible: true, updateBulkSnapshotDataIntegrityModalKey: Math.random() }
+    },
+    showUpdateFreezeFilesystemForSnapshotModal(state, action) {
+      return { ...state, ...action.payload, updateFreezeFilesystemForSnapshotModalVisible: true, updateFreezeFilesystemForSnapshotModalKey: Math.random() }
+    },
+    hideUpdateFreezeFilesystemForSnapshotModal(state, action) {
+      return { ...state, ...action.payload, updateFreezeFilesystemForSnapshotModalVisible: false, updateFreezeFilesystemForSnapshotModalKey: Math.random() }
+    },
+    showUpdateBulkFreezeFilesystemForSnapshotModal(state, action) {
+      return { ...state, ...action.payload, updateBulkFreezeFilesystemForSnapshotModalVisible: true, updateBulkFreezeFilesystemForSnapshotModalKey: Math.random() }
+    },
+    hideUpdateBulkFreezeFilesystemForSnapshotModal(state, action) {
+      return { ...state, ...action.payload, updateBulkFreezeFilesystemForSnapshotModalVisible: false, updateBulkFreezeFilesystemForSnapshotModalKey: Math.random() }
+    },
     showUpdateAccessMode(state, action) {
       return { ...state, ...action.payload, updateAccessModeModalVisible: true, updateAccessModeModalKey: Math.random() }
+    },
+    showUpdateBackupTarget(state, action) {
+      return { ...state, ...action.payload, updateBackupTargetModalVisible: true, updateBackupTargetModalKey: Math.random() }
+    },
+    showUpdateBulkBackupTarget(state, action) {
+      return { ...state, ...action.payload, updateBulkBackupTargetModalVisible: true, updateBulkBackupTargetModalKey: Math.random() }
     },
     showUpdateBulkReplicaCountModal(state, action) {
       return { ...state, ...action.payload, updateBulkReplicaCountModalVisible: true, updateBulkReplicaCountModalKey: Math.random() }
@@ -682,6 +961,12 @@ export default {
     hideUpdateBulkDataLocalityModal(state) {
       return { ...state, updateBulkDataLocalityModalVisible: false }
     },
+    hideUpdateSnapshotDataIntegrityModal(state) {
+      return { ...state, updateSnapshotDataIntegrityModalVisible: false }
+    },
+    hideUpdateBulkSnapshotDataIntegrityModal(state, action) {
+      return { ...state, ...action.payload, updateBulkSnapshotDataIntegrityModalVisible: false, updateBulkSnapshotDataIntegrityModalKey: Math.random() }
+    },
     hideUpdateBulkAccessModeModal(state) {
       return { ...state, updateBulkAccessModeModalVisible: false }
     },
@@ -690,6 +975,12 @@ export default {
     },
     hideUpdateAccessModeModal(state) {
       return { ...state, updateAccessModeModalVisible: false }
+    },
+    hideUpdateBackupTargetModal(state) {
+      return { ...state, updateBackupTargetModalVisible: false }
+    },
+    hideUpdateBulkBackupTargetModal(state) {
+      return { ...state, updateBulkBackupTargetModalVisible: false }
     },
     showBulkExpandVolumeModal(state, action) {
       return { ...state, bulkExpandVolumeModalVisible: true, selectedRows: action.payload, bulkExpandVolumeModalKey: Math.random() }
@@ -722,11 +1013,30 @@ export default {
       }
       return { ...state, customColumnList: action.payload.columns }
     },
-    showConfirmDetachWithWorkload(state) {
-      return { ...state, confirmModalWithWorkloadVisible: true, confirmModalWithWorkloadKey: Math.random() }
+    showBulkUpdateReplicaSoftAntiAffinityModal(state, action) {
+      return {
+        ...state,
+        selectedRows: action?.payload?.volumes,
+        updateReplicaSoftAntiAffinityVisible: true,
+        softAntiAffinityKey: action?.payload?.softAntiAffinityKey,
+        updateReplicaSoftAntiAffinityModalKey: Math.random(),
+      }
     },
-    hideConfirmDetachWithWorkload(state) {
-      return { ...state, confirmModalWithWorkloadVisible: false, confirmModalWithWorkloadKey: Math.random() }
+    showUpdateReplicaSoftAntiAffinityModal(state, action) {
+      return {
+        ...state,
+        selected: action?.payload?.volume,
+        updateReplicaSoftAntiAffinityVisible: true,
+        softAntiAffinityKey: action?.payload?.softAntiAffinityKey,
+        updateReplicaSoftAntiAffinityModalKey: Math.random(),
+      }
+    },
+    hideUpdateReplicaSoftAntiAffinityModal(state) {
+      return {
+        ...state,
+        softAntiAffinityKey: '',
+        updateReplicaSoftAntiAffinityVisible: false,
+      }
     },
     updateWs(state, action) {
       return { ...state, ws: action.payload }

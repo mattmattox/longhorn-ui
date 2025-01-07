@@ -6,10 +6,11 @@ const confirm = Modal.confirm
 
 function actions({ selected, deleteEngineImage }) {
   const handleMenuClick = (event, record) => {
+    event.domEvent?.stopPropagation?.()
     switch (event.key) {
       case 'delete':
         confirm({
-          title: `Are you sure you want to delete engine image ${record.name} ?`,
+          title: `Are you sure you want to delete engine image ${record.name}?`,
           onOk() {
             deleteEngineImage(record)
           },
@@ -19,7 +20,7 @@ function actions({ selected, deleteEngineImage }) {
     }
   }
 
-  const availableActions = [{ key: 'delete', name: 'Delete' }]
+  const availableActions = [{ key: 'delete', name: 'Delete', disabled: selected.default }]
 
   return (
     <DropOption menuOptions={availableActions}

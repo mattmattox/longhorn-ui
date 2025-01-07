@@ -1,8 +1,25 @@
 import React from 'react'
 import PropTypes from 'prop-types'
-import { Form, Icon } from 'antd'
+import { Form, Alert, Checkbox } from 'antd'
 import { ModalBlur } from '../../../components'
 import { BackupLabelInput } from '../../../components'
+
+const FormItem = Form.Item
+
+const formItemLayout = {
+  labelCol: { span: 6 },
+  wrapperCol: { span: 18 },
+}
+
+const getLabels = (getFieldsValue) => {
+  const labels = {}
+  if (getFieldsValue().keys && getFieldsValue().key && getFieldsValue().value) {
+    getFieldsValue().keys.forEach((item) => {
+      labels[getFieldsValue().key[item]] = getFieldsValue().value[item]
+    })
+  }
+  return labels
+}
 
 const modal = ({
   visible,
@@ -21,11 +38,9 @@ const modal = ({
       if (errors) {
         return
       }
-      let data = {}
-      if (getFieldsValue().keys && getFieldsValue().key && getFieldsValue().value) {
-        getFieldsValue().keys.forEach((item) => {
-          data[getFieldsValue().key[item]] = getFieldsValue().value[item]
-        })
+      const data = {
+        labels: getLabels(getFieldsValue),
+        backupMode: getFieldValue('fullBackup') === true ? 'full' : 'incremental',
       }
       onOk(data)
     })
@@ -48,8 +63,16 @@ const modal = ({
 
   return (
     <ModalBlur {...modalOpts}>
-      <p type="warning"><Icon style={{ marginRight: '10px' }} type="exclamation-circle" />This could take a while depending on the actual size of the volume and network bandwidth.</p>
-      <BackupLabelInput form={form} />
+      <Alert showIcon message="Create backup action could take a while depending on the actual size of the volume and network bandwidth." type="warning" />
+      <div style={{ marginTop: '16px' }}>
+        <BackupLabelInput form={form} />
+        <FormItem label="Full Backup" {...formItemLayout}>
+          {getFieldDecorator('fullBackup', {
+            valuePropName: 'checked',
+            initialValue: false,
+          })(<Checkbox />)}
+        </FormItem>
+      </div>
     </ModalBlur>
   )
 }

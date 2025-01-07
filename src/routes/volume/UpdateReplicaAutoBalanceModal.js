@@ -77,7 +77,7 @@ const modal = ({
         {getFieldDecorator('replicaAutoBalance', {
           initialValue,
         })(<Select>
-            <Option key={'ignored'} value={'ignored'}>ignored</Option>
+            <Option key={'ignored'} value={'ignored'}>ignored (follow the global setting)</Option>
             <Option key={'disabled'} value={'disabled'}>disabled</Option>
             <Option key={'least-effort'} value={'least-effort'}>least-effort</Option>
             <Option key={'best-effort'} value={'best-effort'}>best-effort</Option>

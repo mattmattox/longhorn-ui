@@ -1,9 +1,11 @@
 import React from 'react'
 import PropTypes from 'prop-types'
 import ReactMarkdown from 'react-markdown/with-html'
-import { Form, Input, Button, Spin, Icon, Checkbox, Select, InputNumber } from 'antd'
+import { Form, Input, Button, Spin, Icon, Checkbox, Select, InputNumber, Alert } from 'antd'
 import styles from './setting.less'
 import { classnames } from '../../utils'
+import { LH_UI_VERSION } from '../../utils/constants'
+
 const FormItem = Form.Item
 const { Option } = Select
 
@@ -14,13 +16,20 @@ const form = ({
   },
   data,
   saving,
+  loading,
   onSubmit,
+  onInputChange,
+  resetChangedSettings,
 }) => {
+  const unAppliedDangerZoneSettings = data?.filter(d => d.definition.category === 'danger Zone' && d.applied === false).map(d => d.definition.displayName) || []
+
   const handleOnSubmit = () => {
     const fields = getFieldsValue()
     Object.keys(fields).forEach(key => { fields[key] = fields[key].toString() })
     onSubmit(fields)
+    resetChangedSettings()
   }
+
   const parseSettingRules = (setting) => {
     const definition = setting.definition
     const rules = []
@@ -29,6 +38,7 @@ const form = ({
     }
     return rules
   }
+
   const limitNumber = value => {
     if (typeof value === 'string') {
       return !isNaN(Number(value)) ? value.replace(/[^\d]/g, '') : ''
@@ -38,23 +48,31 @@ const form = ({
       return ''
     }
   }
+
   const genInputItem = (setting) => {
+    const settingType = setting.definition.type
+    const settingName = setting.definition.displayName
+
     if (setting.definition && setting.definition.options) {
-      return (<Select getPopupContainer={triggerNode => triggerNode.parentElement}>
-        {setting.definition.options.map((item, index) => {
-          return <Option key={index} value={item}>{item}</Option>
-        })}
-      </Select>)
+      return (
+        <Select onChange={value => onInputChange(settingName, value)} getPopupContainer={triggerNode => triggerNode.parentElement}>
+          {setting.definition.options.map((item, index) => (
+            <Option key={index} value={item}>{item}</Option>
+          ))}
+        </Select>
+      )
     }
-    switch (setting.definition.type) {
+
+    switch (settingType) {
       case 'bool':
-        return (<Checkbox disabled={setting.definition.readOnly} />)
+        return (<Checkbox disabled={setting.definition.readOnly} onChange={e => onInputChange(settingName, e.target.checked)} />)
       case 'int':
-        return (<InputNumber style={{ width: '100%' }} parser={limitNumber} disabled={setting.definition.readOnly} min={0} />)
+        return (<InputNumber onChange={value => onInputChange(settingName, value)} style={{ width: '100%' }} parser={limitNumber} disabled={setting.definition.readOnly} min={0} />)
       default:
-        return (<Input readOnly={setting.definition.readOnly} />)
+        return (<Input readOnly={setting.definition.readOnly} onChange={e => onInputChange(settingName, e.target.value)} />)
     }
   }
+
   const genFormItem = (setting) => {
     let initialValue
     let valuePropName
@@ -80,8 +98,8 @@ const form = ({
         valuePropName = 'value'
         break
     }
-    let deprecatedSettings = setting.definition && setting.definition.type === 'deprecated'
 
+    const deprecatedSettings = setting.definition && setting.definition.type === 'deprecated'
     return (
       <FormItem key={setting.id} className={'settings-container'} style={{ display: deprecatedSettings ? 'none' : 'block' }}>
         <span className={setting.definition.required ? 'ant-form-item-required' : ''} style={{ fontSize: '14px', fontWeight: 700, marginRight: '10px' }}>{setting.definition.displayName}{valuePropName === 'checked' ? ':' : ''}</span>
@@ -90,10 +108,20 @@ const form = ({
           initialValue,
           valuePropName,
         })(genInputItem(setting))}
-        <div>{setting.definition.required && !setting.definition.readOnly ? <Icon style={{ mariginRight: 5 }} type="question-circle-o" /> : <Icon style={{ margin: '8px 5px 0px 0px', float: 'left' }} type="question-circle-o" />} <small style={{ color: '#6c757d', fontSize: '13px', fontWeight: 400 }}>{setting.definition.required && !setting.definition.readOnly ? 'Required. ' : ''}<ReactMarkdown source={setting.definition.description} /></small></div>
+        <div>
+          {setting.definition.required && !setting.definition.readOnly
+            ? <Icon style={{ marginRight: 5 }} type="question-circle-o" />
+            : <Icon style={{ margin: '8px 5px 0px 0px', float: 'left' }} type="question-circle-o" />
+          }
+          <small style={{ color: '#6c757d', fontSize: '13px', fontWeight: 400 }}>
+            {setting.definition.required && !setting.definition.readOnly ? 'Required. ' : ''}
+            <ReactMarkdown source={setting.definition.description} />
+          </small>
+        </div>
       </FormItem>
     )
   }
+
   const getCategoryWeight = (category) => {
     switch (category) {
       case 'general':
@@ -121,29 +149,58 @@ const form = ({
   const settings = Object.keys(settingsGrouped).sort((a, b) => {
     const categoryA = getCategoryWeight(a)
     const categoryB = getCategoryWeight(b)
-    if (categoryA < categoryB) {
-      return -1
-    }
-    if (categoryA > categoryB) {
-      return 1
-    }
-    return 0
-  }).map(item => <div key={item}> <div className={classnames(styles.fieldset, { [styles.dangerZone]: item === 'danger Zone' })}><span className={styles.fieldsetLabel}>{item}</span> { settingsGrouped[item].map(setting => genFormItem(setting))}</div></div>)
+    return categoryA - categoryB
+  }).map(item => (
+    <div key={item}>
+      <div className={classnames(styles.fieldset, { [styles.dangerZone]: item === 'danger Zone' })}>
+        <span className={styles.fieldsetLabel}>{item}</span>
+        {item === 'danger Zone' && (
+          <Alert
+            style={{ marginBottom: '1rem', marginTop: '1rem' }}
+            message={
+            <div className={styles.description}>
+              <span>
+              Some <a target="blank" href={`https://longhorn.io/docs/${LH_UI_VERSION}/references/settings/#danger-zone`}>Danger Zone settings</a> are not immediately applied when one or more volumes are still attached. Ensure that all volumes are detached before configuring the settings.
+              </span>
+              {unAppliedDangerZoneSettings.length > 0 && (
+                <>
+                  <br />
+                  <br />
+                  The following {unAppliedDangerZoneSettings.length === 1 ? 'setting has not' : 'settings have not'} been applied:
+                  <ul>
+                    {unAppliedDangerZoneSettings.map(settingName => <li key={settingName}>{settingName}</li>)}
+                  </ul>
+                </>
+              )}
+            </div>
+            }
+            type="error"
+          />
+        )}
+        {settingsGrouped[item].map(setting => genFormItem(setting))}
+      </div>
+    </div>
+  ))
 
   return (
-    <Spin spinning={saving}>
-      {<Form className={styles.setting}>
-        {settings}
-        <FormItem style={{ textAlign: 'center' }}>
-          <Button
-            onClick={handleOnSubmit}
-            loading={saving}
-            type="primary"
-            htmlType="submit">
-            Save
-          </Button>
-        </FormItem>
-      </Form>}
+    <Spin spinning={saving || loading} style={{ height: '100vh' }}>
+      <div className={styles.wrapper}>
+        <Form className={styles.setting}>
+          {settings}
+        </Form>
+        {settings.length > 0 && (
+            <div style={{ textAlign: 'center', position: 'sticky', marginTop: '1rem' }}>
+              <Button
+                onClick={handleOnSubmit}
+                loading={saving}
+                type="primary"
+                htmlType="submit"
+              >
+                Save
+              </Button>
+            </div>
+        )}
+       </div>
     </Spin>
   )
 }
@@ -154,6 +211,8 @@ form.propTypes = {
   onSubmit: PropTypes.func,
   saving: PropTypes.bool,
   loading: PropTypes.bool,
+  onInputChange: PropTypes.func,
+  resetChangedSettings: PropTypes.func,
 }
 
 export default Form.create()(form)

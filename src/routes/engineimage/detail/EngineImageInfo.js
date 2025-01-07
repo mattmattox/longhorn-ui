@@ -27,11 +27,19 @@ function EngineImageInfo({ selectedEngineImage }) {
       </div>
       <div className={styles.row}>
         <span className={styles.label}>Status:</span>
-        <span className={classnames({ [selectedEngineImage.state.toLowerCase()]: true, capitalize: true })}>{selectedEngineImage.state.hyphenToHump()}</span>
+        <span className={classnames({ [selectedEngineImage.incompatible ? 'incompatible' : selectedEngineImage.state.toLowerCase()]: true, capitalize: true })}>{selectedEngineImage.incompatible ? 'Incompatible' : selectedEngineImage.state.hyphenToHump()}</span>
       </div>
       <div className={styles.row}>
         <span className={styles.label}>Default:</span>
         <span>{selectedEngineImage.default ? 'True' : 'False'}</span>
+      </div>
+      <div className={styles.row}>
+        <span className={styles.label}>CLIAPIVersion:</span>
+        <span>{selectedEngineImage.cliAPIVersion}</span>
+      </div>
+      <div className={styles.row}>
+        <span className={styles.label}>ControllerAPIVersion:</span>
+        <span>{selectedEngineImage.controllerAPIVersion}</span>
       </div>
       <div className={styles.row}>
         <span className={styles.label}>Image:</span>

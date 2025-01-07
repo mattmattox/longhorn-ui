@@ -7,10 +7,10 @@ const Option = Select.Option
 
 const formItemLayout = {
   labelCol: {
-    span: 7,
+    span: 8,
   },
   wrapperCol: {
-    span: 15,
+    span: 14,
   },
 }
 
@@ -26,7 +26,8 @@ const modal = ({
   backingImages,
   backupVolumes,
   setPreviousChange,
-  isBulk = false,
+  v1DataEngineEnabled,
+  v2DataEngineEnabled,
   form: {
     getFieldDecorator,
     validateFields,
@@ -39,9 +40,13 @@ const modal = ({
       if (errors) {
         return
       }
+      // use the backup target name from the original backupVolume
+      const targetBackupVolume = backupVolumes.find(bkVol => bkVol.volumeName === item.volumeName) || {}
       const data = {
         ...getFieldsValue(),
         fromBackup: item.fromBackup,
+        backupTargetName: targetBackupVolume?.backupTargetName || '',
+        volumeName: getFieldsValue().name,
       }
       if (data.name && typeof data.name === 'string') {
         data.name = data.name.trimLeftAndRight()
@@ -49,12 +54,13 @@ const modal = ({
       onOk(data)
     })
   }
+
   const modalOpts = {
-    title: isBulk ? 'Restore Backup' : `Restore Backup ${item.backupName}`,
+    title: `Restore Backup ${item.backupName}`,
     visible,
     onCancel,
     onOk: handleOk,
-    width: 600,
+    width: 700,
   }
 
   function onPreviousChange(value) {
@@ -72,7 +78,7 @@ const modal = ({
       <Form layout="horizontal">
         <Popover placement="right"
           visible={showWarning}
-          content={<div style={{ maxWidth: 200 }}>
+          content={<div style={{ maxWidth: 250 }}>
             <Alert message={message} type="warning" />
           </div>}>
           <FormItem label="Name" hasFeedback {...formItemLayout}>
@@ -80,37 +86,51 @@ const modal = ({
               initialValue: item.name,
               rules: [
                 {
-                  required: true && !isBulk,
-                  message: 'Please input volume name',
+                  required: true,
+                  message: 'Volume name is required',
                 },
               ],
-            })(<Input disabled={isBulk} />)}
+            })(<Input />)}
           </FormItem>
         </Popover>
-          {!isBulk ? <FormItem label="Use Previous Name" hasFeedback {...formItemLayout}>
-              <Checkbox checked={previousChecked} disabled={!item.volumeName} onChange={onPreviousChange}></Checkbox>
-            </FormItem> : ''}
-          {!isBulk ? <FormItem label="Number of Replicas" hasFeedback {...formItemLayout}>
-            {getFieldDecorator('numberOfReplicas', {
-              initialValue: item.numberOfReplicas,
-              rules: [
-                {
-                  required: true,
-                  message: 'Please input the number of replicas',
+        <FormItem label="Use Previous Name" hasFeedback {...formItemLayout}>
+          <Checkbox checked={previousChecked} disabled={!item.volumeName} onChange={onPreviousChange} />
+        </FormItem>
+        <FormItem label="Number of Replicas" hasFeedback {...formItemLayout}>
+          {getFieldDecorator('numberOfReplicas', {
+            initialValue: item.numberOfReplicas,
+            rules: [
+              {
+                required: true,
+                message: 'Please input the number of replicas',
+              },
+            ],
+          })(<InputNumber min={1} />)}
+        </FormItem>
+        <FormItem label="Data Engine" hasFeedback {...formItemLayout}>
+          {getFieldDecorator('dataEngine', {
+            initialValue: v1DataEngineEnabled ? 'v1' : 'v2',
+            rules: [
+              {
+                required: true,
+                message: 'Please select the data engine',
+              },
+              {
+                validator: (rule, value, callback) => {
+                  if (value === 'v1' && !v1DataEngineEnabled) {
+                    callback('v1 data engine is not enabled')
+                  } else if (value === 'v2' && !v2DataEngineEnabled) {
+                    callback('v2 data engine is not enabled')
+                  }
+                  callback()
                 },
-              ],
-            })(<InputNumber min={1} />)}
-          </FormItem> : <FormItem label="Number of Replicas" hasFeedback {...formItemLayout}>
-            {getFieldDecorator('numberOfReplicas', {
-              initialValue: item.numberOfReplicas,
-              rules: [
-                {
-                  required: true,
-                  message: 'Please input the number of replicas',
-                },
-              ],
-            })(<InputNumber min={1} />)}
-          </FormItem>}
+              },
+            ],
+          })(<Select>
+            <Option key={'v1'} value={'v1'}>v1</Option>
+            <Option key={'v2'} value={'v2'}>v2</Option>
+          </Select>)}
+        </FormItem>
         <FormItem label="Access Mode" hasFeedback {...formItemLayout}>
           {getFieldDecorator('accessMode', {
             initialValue: item.accessMode,
@@ -122,15 +142,24 @@ const modal = ({
         <FormItem label="Backing Image" hasFeedback {...formItemLayout}>
           {getFieldDecorator('backingImage', {
             initialValue: item.backingImage,
-          })(<Select allowClear={true}>
+          })(<Select allowClear={true} disabled>
             { backingImages.map(backingImage => <Option key={backingImage.name} value={backingImage.name}>{backingImage.name}</Option>) }
           </Select>)}
         </FormItem>
         <FormItem label="Encrypted" {...formItemLayout}>
-          {getFieldDecorator('encrypted', {
-            valuePropName: 'encrypted',
-            initialValue: false,
-          })(<Checkbox></Checkbox>)}
+        {getFieldDecorator('encrypted', {
+          valuePropName: 'encrypted',
+          initialValue: false,
+        })(<Checkbox></Checkbox>)}
+        </FormItem>
+        <FormItem label="Restore Volume Recurring Job" hasFeedback {...formItemLayout}>
+          {getFieldDecorator('restoreVolumeRecurringJob', {
+            initialValue: 'ignored',
+          })(<Select>
+            <Option key={'enabled'} value={'enabled'}>Enabled</Option>
+            <Option key={'disabled'} value={'disabled'}>Disabled</Option>
+            <Option key={'ignored'} value={'ignored'}>Ignored</Option>
+          </Select>)}
         </FormItem>
         <Spin spinning={tagsLoading}>
           <FormItem label="Node Tag" hasFeedback {...formItemLayout}>
@@ -156,20 +185,20 @@ const modal = ({
 }
 
 modal.propTypes = {
-  form: PropTypes.object.isRequired,
+  item: PropTypes.object,
   visible: PropTypes.bool,
   previousChecked: PropTypes.bool,
   onCancel: PropTypes.func,
-  item: PropTypes.object,
   onOk: PropTypes.func,
   setPreviousChange: PropTypes.func,
-  hosts: PropTypes.array,
   nodeTags: PropTypes.array,
   diskTags: PropTypes.array,
   backingImages: PropTypes.array,
   backupVolumes: PropTypes.array,
-  isBulk: PropTypes.bool,
+  v1DataEngineEnabled: PropTypes.bool,
+  v2DataEngineEnabled: PropTypes.bool,
   tagsLoading: PropTypes.bool,
+  form: PropTypes.object.isRequired,
 }
 
 export default Form.create()(modal)
