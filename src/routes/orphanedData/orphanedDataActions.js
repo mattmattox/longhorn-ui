@@ -6,10 +6,11 @@ const confirm = Modal.confirm
 
 function actions({ selected, deleteOrphanedData }) {
   const handleMenuClick = (event, record) => {
+    event.domEvent?.stopPropagation?.()
     switch (event.key) {
       case 'delete':
         confirm({
-          title: `Are you sure you want to delete ${record.name} ?`,
+          title: `Are you sure you want to delete ${record.name}?`,
           width: 560,
           onOk() {
             deleteOrphanedData(record)

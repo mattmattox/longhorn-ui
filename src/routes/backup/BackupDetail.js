@@ -3,29 +3,37 @@ import PropTypes from 'prop-types'
 import { connect } from 'dva'
 import queryString from 'query-string'
 import { Modal } from 'antd'
-import RestoreBackup from './RestoreBackup'
+import RestoreBackupModal from './RestoreBackupModal'
 import { DropOption } from '../../components'
 import BackupList from './BackupList'
 import { sortBackups } from '../../utils/sort'
 import ShowBackupLabels from './ShowBackupLabels'
-import CreateStandbyVolume from './CreateStandbyVolume'
+import CreateStandbyVolumeModal from './CreateStandbyVolumeModal'
 import WorkloadDetailModal from '../volume/WorkloadDetailModal'
 
 const { confirm } = Modal
 
-function Backup({ host, backup, volume, setting, backingImage, loading, location, dispatch }) {
+function Backup({ backup, volume, setting, backingImage, loading, location, dispatch }) {
   const { backupVolumes, backupData, restoreBackupModalVisible, restoreBackupModalKey, currentItem, sorter, showBackupLabelsModalKey, backupLabel, showBackuplabelsModalVisible, createVolumeStandModalKey, createVolumeStandModalVisible, baseImage, size, lastBackupUrl, workloadDetailModalVisible, workloadDetailModalItem, workloadDetailModalKey, previousChecked, tagsLoading, nodeTags, diskTags } = backup
-  const hosts = host.data
+
   const volumeList = volume.data
   const settings = setting.data
   const backingImages = backingImage.data
   const defaultReplicaCountSetting = settings.find(s => s.id === 'default-replica-count')
   const defaultNumberOfReplicas = defaultReplicaCountSetting !== undefined ? parseInt(defaultReplicaCountSetting.value, 10) : 3
-  const volumeName = queryString.parse(location.search).keyword
-  const currentBackUp = backupVolumes.find((item) => { return item.id === volumeName })
-  sortBackups(backupData)
+
+  const { keyword } = queryString.parse(location.search)
+  const currentBackUp = backupVolumes.find(bkVol => bkVol.name === keyword) || {}
+  const v1DataEngineEnabledSetting = settings.find(s => s.id === 'v1-data-engine')
+  const v2DataEngineEnabledSetting = settings.find(s => s.id === 'v2-data-engine')
+  const v1DataEngineEnabled = v1DataEngineEnabledSetting?.value === 'true'
+  const v2DataEngineEnabled = v2DataEngineEnabledSetting?.value === 'true'
+
+  const backups = currentBackUp ? backupData.filter(bk => bk.volumeName === currentBackUp.volumeName) : backupData
+  sortBackups(backups)
+
   const backupProps = {
-    backup: backupData,
+    backup: backups,
     volumeList,
     loading,
     dispatch,
@@ -37,7 +45,7 @@ function Backup({ host, backup, volume, setting, backingImage, loading, location
     },
     sorter,
     showRestoreBackup(record) {
-      let currentVolume = volumeList.find((item) => record.volumeName === item.name)
+      const currentVolume = volumeList.find((item) => record.volumeName === item.name)
       dispatch({
         type: 'backup/beforeShowRestoreBackupModal',
         payload: {
@@ -56,7 +64,7 @@ function Backup({ host, backup, volume, setting, backingImage, loading, location
       dispatch({
         type: 'backup/delete',
         payload: {
-          volumeName,
+          volumeName: currentBackUp.volumeName,
           name: record.id,
           listUrl,
           ...queryString.parse(location.search),
@@ -78,13 +86,14 @@ function Backup({ host, backup, volume, setting, backingImage, loading, location
 
   const restoreBackupModalProps = {
     item: currentItem,
-    hosts,
     previousChecked,
     tagsLoading,
     nodeTags,
     diskTags,
     backupVolumes,
     backingImages,
+    v1DataEngineEnabled,
+    v2DataEngineEnabled,
     visible: restoreBackupModalVisible,
     onOk(selectedBackup) {
       dispatch({
@@ -130,7 +139,7 @@ function Backup({ host, backup, volume, setting, backingImage, loading, location
       onOk() {
         dispatch({
           type: 'backup/deleteAllBackups',
-          payload: volumeName,
+          payload: currentBackUp.id,
         })
       },
     })
@@ -150,6 +159,8 @@ function Backup({ host, backup, volume, setting, backingImage, loading, location
     tagsLoading,
     visible: createVolumeStandModalVisible,
     backingImages,
+    v1DataEngineEnabled,
+    v2DataEngineEnabled,
     onOk(newVolume) {
       let obj = Object.assign(newVolume, { standby: true, frontend: '' })
       obj.size = obj.size.replace(/\s/ig, '')
@@ -188,7 +199,7 @@ function Backup({ host, backup, volume, setting, backingImage, loading, location
   }
 
   return (
-    <div className="content-inner" style={{ display: 'flex', flexDirection: 'column', overflow: 'visible !important' }}>
+    <div className="content-inner" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ position: 'absolute', top: '-50px', right: '20px', display: 'flex', justifyContent: 'flex-end', padding: '10px' }}>
         <DropOption
           menuOptions={[
@@ -199,9 +210,9 @@ function Backup({ host, backup, volume, setting, backingImage, loading, location
         />
       </div>
       <BackupList {...backupProps} />
-      { restoreBackupModalVisible ? <RestoreBackup key={restoreBackupModalKey} {...restoreBackupModalProps} /> : ''}
+      { restoreBackupModalVisible ? <RestoreBackupModal key={restoreBackupModalKey} {...restoreBackupModalProps} /> : ''}
       { showBackuplabelsModalVisible ? <ShowBackupLabels key={showBackupLabelsModalKey} {...showBackupLabelsModalProps} /> : ''}
-      { createVolumeStandModalVisible ? <CreateStandbyVolume key={createVolumeStandModalKey} {...createVolumeStandModalProps} /> : ''}
+      { createVolumeStandModalVisible ? <CreateStandbyVolumeModal key={createVolumeStandModalKey} {...createVolumeStandModalProps} /> : ''}
       { workloadDetailModalVisible ? <WorkloadDetailModal key={workloadDetailModalKey} {...workloadDetailModalProps} /> : ''}
     </div>
   )
@@ -212,14 +223,13 @@ Backup.propTypes = {
   location: PropTypes.object,
   dispatch: PropTypes.func,
   loading: PropTypes.bool,
-  host: PropTypes.object,
   setting: PropTypes.object,
   volume: PropTypes.object,
   backingImage: PropTypes.object,
 }
 
 export default connect(({
-  host, backup, setting, loading, volume, backingImage,
+  backup, setting, loading, volume, backingImage,
 }) => ({
-  host, backup, setting, loading: loading.models.backup, volume, backingImage,
+  backup, setting, loading: loading.models.backup, volume, backingImage,
 }))(Backup)

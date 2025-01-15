@@ -4,7 +4,7 @@ import { Table, Icon, Tooltip, Progress } from 'antd'
 import { formatDate } from '../../utils/formatDate'
 import classnames from 'classnames'
 import { LinkTo, EngineImageUpgradeTooltip, ReplicaHATooltip } from '../../components'
-import { formatMib } from '../../utils/formater'
+import { formatMib } from '../../utils/formatter'
 import VolumeActions from './VolumeActions'
 import { isSchedulingFailure, getHealthState, needToWaitDone, extractImageVersion } from './helper/index'
 import { sortTable, sortTableObject, sortTableByUTCDate, sortTableByPVC, sortTableActualSize, sortTableState, sortTableByTimestamp } from '../../utils/sort'
@@ -16,19 +16,65 @@ import { isVolumeImageUpgradable, isVolumeReplicaNotRedundancy, isVolumeRelicaLi
 import IconBackup from '../../components/Icon/IconBackup'
 import IconStandBackup from '../../components/Icon/IconStandBackup'
 
-function list({ loading, dataSource, engineImages, hosts, showAttachHost, showEngineUpgrade, showRecurring, showSnapshots, detach, deleteVolume, changeVolume, showBackups, takeSnapshot, showSalvage, showUpdateReplicaCount, rollback, rowSelection, sorter, createPVAndPVC, showWorkloadsStatusDetail, showExpansionVolumeSizeModal, showCancelExpansionModal, showRecurringJobModal, onSorterChange, height, confirmDetachWithWorkload, showUpdateDataLocality, showUpdateAccessMode, showUpdateReplicaAutoBalanceModal, commandKeyDown, replicaSoftAntiAffinitySettingValue, engineUpgradePerNodeLimit, customColumnList, onRowClick = f => f }) {
+function list({
+  loading,
+  dataSource,
+  engineImages,
+  hosts,
+  showAttachHost,
+  showEngineUpgrade,
+  showRecurring,
+  showSnapshots,
+  showDetachHost,
+  deleteVolume,
+  changeVolume,
+  showBackups,
+  takeSnapshot,
+  showSalvage,
+  showVolumeCloneModal,
+  showUpdateReplicaCount,
+  rollback,
+  rowSelection,
+  sorter,
+  createPVAndPVC,
+  showWorkloadsStatusDetail,
+  showExpansionVolumeSizeModal,
+  showCancelExpansionModal,
+  showRecurringJobModal,
+  onSorterChange,
+  height,
+  showUpdateDataLocality,
+  showUpdateBackupTarget,
+  showUpdateAccessMode,
+  showUpdateReplicaAutoBalanceModal,
+  showUnmapMarkSnapChainRemovedModal,
+  trimFilesystem,
+  commandKeyDown,
+  replicaSoftAntiAffinitySettingValue,
+  engineUpgradePerNodeLimit,
+  customColumnList,
+  showUpdateSnapshotDataIntegrityModal,
+  updateSnapshotMaxCount,
+  updateSnapshotMaxSize,
+  showUpdateReplicaSoftAntiAffinityModal,
+  showUpdateReplicaZoneSoftAntiAffinityModal,
+  showUpdateReplicaDiskSoftAntiAffinityModal,
+  showUpdateFreezeFilesystemForSnapshotModal,
+  onRowClick = f => f,
+}) {
   const volumeActionsProps = {
     engineImages,
     showAttachHost,
     showEngineUpgrade,
     showRecurring,
     showSnapshots,
-    detach,
+    showDetachHost,
     showBackups,
     deleteVolume,
     takeSnapshot,
     showSalvage,
     rollback,
+    showVolumeCloneModal,
     showUpdateReplicaCount,
     createPVAndPVC,
     showWorkloadsStatusDetail,
@@ -37,14 +83,23 @@ function list({ loading, dataSource, engineImages, hosts, showAttachHost, showEn
     showCancelExpansionModal,
     changeVolume,
     height,
-    confirmDetachWithWorkload,
     commandKeyDown,
     replicaSoftAntiAffinitySettingValue,
     engineUpgradePerNodeLimit,
     customColumnList,
     showUpdateDataLocality,
     showUpdateAccessMode,
+    showUpdateBackupTarget,
     showUpdateReplicaAutoBalanceModal,
+    showUnmapMarkSnapChainRemovedModal,
+    trimFilesystem,
+    showUpdateSnapshotDataIntegrityModal,
+    updateSnapshotMaxCount,
+    updateSnapshotMaxSize,
+    showUpdateReplicaSoftAntiAffinityModal,
+    showUpdateReplicaZoneSoftAntiAffinityModal,
+    showUpdateReplicaDiskSoftAntiAffinityModal,
+    showUpdateFreezeFilesystemForSnapshotModal,
     onRowClick,
   }
   /**
@@ -112,7 +167,7 @@ function list({ loading, dataSource, engineImages, hosts, showAttachHost, showEn
         } else if (isVolumeRelicaLimited(record) && replicaSoftAntiAffinitySettingValue) {
           ha = (<ReplicaHATooltip type="warning" />)
         }
-        let attchedNodeIsDown = record.state === 'attached' && record.robustness === 'unknown' && hosts.some((host) => {
+        let attachedNodeIsDown = record.state === 'attached' && record.robustness === 'unknown' && hosts.some((host) => {
           return record.controllers && record.controllers[0] && host.id === record.controllers[0].hostId && host.conditions && host.conditions.Ready && host.conditions.Ready.status === 'False'
         })
         let dataLocalityWarn = record.dataLocality === 'best-effort' && record.state === 'attached' && record.replicas && record.replicas.every((item) => {
@@ -120,14 +175,31 @@ function list({ loading, dataSource, engineImages, hosts, showAttachHost, showEn
           return item.hostId !== attachedNode
         })
         let statusForWorkloadMessage = `Not ready for workload. ${record.robustness === 'faulted' ? 'Volume Faulted' : 'Volume may be under maintenance or in the restore process.'} `
-        let statusForWorkload = <Tooltip title={statusForWorkloadMessage}><Icon type="exclamation-circle" className="faulted" style={{ marginLeft: '5px' }} /></Tooltip>
+        let statusForWorkload = <Tooltip title={statusForWorkloadMessage}><Icon type="exclamation-circle" className="faulted" style={{ marginLeft: 5 }} /></Tooltip>
         let stateText = (() => {
           if (text.hyphenToHump() === 'attached' && record.robustness === 'healthy') {
-            return <div className={classnames({ [record.robustness.toLowerCase()]: true, capitalize: true })} style={{ display: 'flex', alignItems: 'center' }}>{ha}{state}{ !record.ready ? statusForWorkload : '' }</div>
+            return (<div
+              className={classnames({ [record.robustness.toLowerCase()]: true, capitalize: true })}
+              style={{ display: 'flex', alignItems: 'center' }}
+              >
+                {ha}{state}{ !record.ready ? statusForWorkload : '' }
+              </div>)
           } else if (text.hyphenToHump() === 'attached' && record.robustness === 'degraded') {
-            return <div className={classnames({ [record.robustness.toLowerCase()]: true, capitalize: true })} style={{ display: 'flex', alignItems: 'center' }}>{ha}{state}{ !record.ready ? statusForWorkload : '' }</div>
+            return (
+              <div
+                className={classnames({ [record.robustness.toLowerCase()]: true, capitalize: true })}
+                style={{ display: 'flex', alignItems: 'center' }}
+              >
+                {ha}{state}{ !record.ready ? statusForWorkload : '' }
+              </div>
+            )
           } else if (text.hyphenToHump() === 'detached' && record.robustness === 'faulted') {
-            return <div className={classnames({ [record.robustness.toLowerCase()]: true, capitalize: true })} style={{ display: 'flex', alignItems: 'center' }}>{ha}{state}{ !record.ready ? statusForWorkload : '' }</div>
+            return (<div
+              className={classnames({ [record.robustness.toLowerCase()]: true, capitalize: true })}
+              style={{ display: 'flex', alignItems: 'center' }}
+              >
+                {ha}{state}{ !record.ready ? statusForWorkload : '' }
+            </div>)
           }
           return text.hyphenToHump()
         })()
@@ -142,13 +214,21 @@ function list({ loading, dataSource, engineImages, hosts, showAttachHost, showEn
               {restoreProgress}
               {rebuildProgress}
             </div>
-            {isEncrypted ? <Tooltip title={'Encrypted Volume'}><Icon className="color-warning" style={{ marginRight: 5, marginBottom: 2 }} type="lock" /></Tooltip> : null}
+            {isEncrypted ? <Tooltip title={'Encrypted Volume'}><Icon className="color-warning" style={{ marginLeft: 5, marginRight: 5, marginBottom: 2 }} type="lock" /></Tooltip> : null}
             {statusUpgradingEngine(record)}
-            {upgrade}
-            {attchedNodeIsDown ? <Tooltip title={'The attached node is down'}><Icon className="faulted" style={{ transform: 'rotate(45deg)', marginRight: 5 }} type="api" /></Tooltip> : ''}
+            { upgrade }
+            {attachedNodeIsDown && (
+              <Tooltip title={'The attached node is down'}>
+                <Icon className="faulted" style={{ transform: 'rotate(45deg)', marginRight: 5, marginLeft: 5 }} type="api" />
+              </Tooltip>
+            )}
             {stateText}
-            {dataLocalityWarn ? <Tooltip title={'Volume does not have data locality! There is no healthy replica on the same node as the engine'}><Icon style={{ fontSize: '16px', marginLeft: 6 }} className="color-warning" type="warning" /></Tooltip> : ''}
-            {needToWaitDone(text, record.replicas) ? <Icon type="loading" /> : null}
+            {dataLocalityWarn && (
+              <Tooltip title={'Volume does not have data locality! There is no healthy replica on the same node as the engine'}>
+                <Icon style={{ fontSize: '16px', marginLeft: 10 }} className="color-warning" type="warning" />
+              </Tooltip>
+            )}
+            {needToWaitDone(text, record.replicas) ? <Icon type="loading" style={{ marginLeft: 5 }} /> : null}
           </div>
         )
       },
@@ -183,14 +263,24 @@ function list({ loading, dataSource, engineImages, hosts, showAttachHost, showEn
       key: 'size',
       width: 100,
       sorter: (a, b) => sortTable(a, b, 'size'),
-      render: (text, record) => {
-        let oldSize = record && record.controllers && record.controllers[0] && record.controllers[0].size ? record.controllers[0].size : ''
-        let isExpanding = (text !== oldSize && record.state === 'attached')
-        let message = `The volume is in expansion progress from size ${formatMib(oldSize)} to size ${formatMib(text)}`
+      render: (expectedSize, record) => {
+        let currentSize = record?.controllers[0]?.size ?? ''
+        let isExpanding = record?.controllers[0] && parseInt(expectedSize, 10) !== parseInt(currentSize, 10) && record.state === 'attached' && parseInt(currentSize, 10) !== 0
+        // The expected size of engine should not be smaller than the current size.
+        let expandingFailed = isExpanding && record?.controllers[0]?.lastExpansionError !== ''
+        let message = ''
+        if (expandingFailed) {
+          message = (<div>
+            <div>Expansion Error: {record.controllers[0].lastExpansionError}</div>
+            <div>Note: You can cancel the expansion to avoid volume crash</div>
+          </div>)
+        } else if (isExpanding) {
+          message = `The volume is in expansion progress from size ${formatMib(currentSize)} to size ${formatMib(expectedSize)}`
+        }
 
         return (
-          <div>
-            {isExpanding ? <Tooltip title={message}>
+          <span>
+            {isExpanding && !expandingFailed ? <Tooltip title={message}>
               <div style={{ position: 'relative', color: 'rgb(16, 142, 233)' }}>
                 <div className={style.expendVolumeIcon}>
                   <Icon type="loading" />
@@ -199,8 +289,22 @@ function list({ loading, dataSource, engineImages, hosts, showAttachHost, showEn
                   <Icon type="arrows-alt" style={{ transform: 'rotate(45deg)' }} />
                 </div>
               </div>
-            </Tooltip> : <div>{formatMib(text)}</div>}
-          </div>
+            </Tooltip> : <Tooltip title={message}>
+              <div className={expandingFailed ? 'error' : ''}>
+                {expandingFailed ? <div>
+                  <Icon style={{ fontSize: '20px', marginRight: 5 }} type="info-circle" />
+                  <div className={'error'} style={{ position: 'relative', display: 'inline-block' }}>
+                    <div className={style.expendVolumeIcon}>
+                      <Icon type="loading" />
+                    </div>
+                    <div style={{ fontSize: '20px', marginLeft: '8px' }}>
+                      <Icon type="arrows-alt" style={{ transform: 'rotate(45deg)' }} />
+                    </div>
+                  </div>
+                </div> : formatMib(expectedSize)}
+              </div>
+            </Tooltip>}
+          </span>
         )
       },
     },
@@ -211,8 +315,7 @@ function list({ loading, dataSource, engineImages, hosts, showAttachHost, showEn
       width: 140,
       sorter: (a, b) => sortTableActualSize(a, b),
       render: (text, record) => {
-        let size = record && record.controllers && record.controllers[0] && record.controllers[0].actualSize ? parseInt(record.controllers[0].actualSize, 10) : 0
-
+        let size = record?.controllers && record.controllers[0] && record.controllers[0].actualSize ? parseInt(record.controllers[0].actualSize, 10) : 0
         return (
           <div>
             <div>{formatMib(size)}</div>
@@ -230,6 +333,20 @@ function list({ loading, dataSource, engineImages, hosts, showAttachHost, showEn
         return (
           <div>
             {formatDate(text)}
+          </div>
+        )
+      },
+    },
+    {
+      title: 'Data Engine',
+      dataIndex: 'dataEngine',
+      key: 'dataEngine',
+      width: 220,
+      sorter: (a, b) => sortTable(a, b, 'dataEngine'),
+      render: (text) => {
+        return (
+          <div>
+            {text}
           </div>
         )
       },
@@ -453,6 +570,7 @@ list.propTypes = {
   showBackups: PropTypes.func,
   takeSnapshot: PropTypes.func,
   showSalvage: PropTypes.func,
+  showCloneVolume: PropTypes.func,
   showUpdateReplicaCount: PropTypes.func,
   rollback: PropTypes.func,
   rowSelection: PropTypes.object,
@@ -465,14 +583,17 @@ list.propTypes = {
   height: PropTypes.number,
   changeVolume: PropTypes.func,
   commandKeyDown: PropTypes.bool,
-  confirmDetachWithWorkload: PropTypes.func,
   showExpansionVolumeSizeModal: PropTypes.func,
   showCancelExpansionModal: PropTypes.func,
+  showUpdateBackupTarget: PropTypes.func,
   showUpdateDataLocality: PropTypes.func,
   showUpdateAccessMode: PropTypes.func,
   showUpdateReplicaAutoBalanceModal: PropTypes.func,
+  showUnmapMarkSnapChainRemovedModal: PropTypes.func,
+  showUpdateSnapshotDataIntegrityModal: PropTypes.func,
   replicaSoftAntiAffinitySettingValue: PropTypes.bool,
   engineUpgradePerNodeLimit: PropTypes.object,
+  showUpdateFreezeFilesystemForSnapshotModal: PropTypes.func,
 }
 
 export default list

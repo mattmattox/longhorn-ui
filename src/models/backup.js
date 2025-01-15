@@ -1,4 +1,5 @@
-import { query, queryBackupList, execAction, restore, deleteBackup, createVolume, deleteAllBackups, getNodeTags, getDiskTags, queryTarget } from '../services/backup'
+import { query, queryBackupList, execAction, restore, deleteBackup, syncBackupVolume, syncAllBackupVolumes, createVolume, deleteAllBackups, getNodeTags, getDiskTags } from '../services/backup'
+import { queryBackupTarget } from '../services/backupTarget'
 import { message } from 'antd'
 import { wsChanges } from '../utils/websocket'
 import queryString from 'query-string'
@@ -16,24 +17,21 @@ export default {
     selectedRows: [],
     workloadDetailModalItem: {},
     backupStatus: {},
-    currentItem: {},
+    currentItem: [],
     currentBackupVolume: {},
     lastBackupUrl: '',
-    baseImage: '',
     volumeName: '',
     backupTargetMessage: '',
+    backupTargetAvailable: false,
     previousChecked: false,
     tagsLoading: true,
     size: '',
     backupLabel: {},
     nodeTags: [],
     diskTags: [],
-    bulkRestoreData: [],
     backupVolumesForBulkCreate: [],
     search: {},
-    isBulkRestore: false,
     restoreBackupModalVisible: false,
-    backupTargetAvailable: false,
     workloadDetailModalVisible: false,
     createVolumeStandModalVisible: false,
     bulkCreateVolumeStandModalVisible: false,
@@ -66,7 +64,6 @@ export default {
             })
           }
           dispatch({ type: 'queryBackupTarget', payload: { history } })
-          // Record search params for volume detail page
           dispatch({
             type: 'recordSearch',
             payload: { search },
@@ -103,16 +100,16 @@ export default {
     *queryBackupTarget({
       payload,
     }, { call, put }) {
-      let resp = yield call(queryTarget)
-      if (resp && resp.data && resp.data[0]) {
-        let isbackupVolumePage = true
-        let path = ['/node', '/dashboard', '/volume', '/engineimage', '/setting', '/backingImage', '/recurringJob']
-
-        isbackupVolumePage = payload.history && payload.history.location && payload.history.location.pathname && payload.history.location.pathname !== '/' && path.every(ele => !payload.history.location.pathname.startsWith(ele))
-        if (isbackupVolumePage) {
-          !resp.data[0].available ? message.error(resp.data[0].message) : message.destroy()
+      const resp = yield call(queryBackupTarget)
+      if (resp && resp.status === 200) {
+        const backupTargetAvailable = resp?.data?.some(d => d.available === true) || false
+        const backupTargetMessage = backupTargetAvailable ? '' : 'No backup target is available, please go to Setting -> Backup Target page to create one'
+        if (payload.history.location.pathname === '/backup' && !backupTargetAvailable) {
+          message.error(backupTargetMessage, 3)
+        } else {
+          message.destroy()
         }
-        yield put({ type: 'setBackupTargetAvailable', payload: { backupTargetAvailable: resp.data[0].available, backupTargetMessage: resp.data[0].message } })
+        yield put({ type: 'setBackupTargetAvailable', payload: { backupTargetAvailable, backupTargetMessage } })
       }
     },
     *queryBackupStatus({
@@ -140,22 +137,21 @@ export default {
         params.backupName = lastBackup.id
         params.numberOfReplicas = payload.numberOfReplicas
         params.volumeName = lastBackup.volumeName
-        params.backingImage = payload.backingImage ? payload.backingImage : ''
+        params.backingImage = payload.backingImage || ''
 
-        yield put({ type: 'showRestoreBackupModal', payload: { currentItem: params } })
-        yield put({ type: 'queryDiskTagsAndgetNodeTags' })
+        yield put({ type: 'showRestoreBackupModal', payload: { currentItem: [params] } })
+        yield put({ type: 'queryDiskTagsAndGetNodeTags' })
       }
     },
     *beforeShowRestoreBackupModal({
       payload,
     }, { put }) {
       yield put({ type: 'showRestoreBackupModal', payload })
-      yield put({ type: 'queryDiskTagsAndgetNodeTags' })
+      yield put({ type: 'queryDiskTagsAndGetNodeTags' })
     },
     *queryBackupDetailBulkData({
       payload,
     }, { call, put }) {
-      // const data = yield call(execAction, payload.url)
       if (payload && payload.selectedRows && payload.selectedRows.length > 0) {
         let data = []
 
@@ -173,19 +169,19 @@ export default {
             }
           }
         }
-
         if (data && data.length > 0) {
           yield put({ type: 'showRestoreBulkBackupModal',
             payload: {
-              currentItem: {
-                name: '<Volume Name>',
+              currentItem: data.map(d => ({
+                backupName: d.name,
+                backingImage: d.volumeBackingImageName,
+                fromBackup: d.url,
+                volumeName: d.volumeName,
                 numberOfReplicas: payload.numberOfReplicas,
-              },
-              bulkRestoreData: data,
+              })),
             },
           })
-
-          yield put({ type: 'queryDiskTagsAndgetNodeTags' })
+          yield put({ type: 'queryDiskTagsAndGetNodeTags' })
         }
       }
     },
@@ -197,7 +193,7 @@ export default {
       const search = yield select(store => { return store.backup.search })
       yield put({ type: 'query', payload: { ...search } })
     },
-    *queryDiskTagsAndgetNodeTags({
+    *queryDiskTagsAndGetNodeTags({
       payload,
     }, { call, put }) {
       const nodeTags = yield call(getNodeTags, payload)
@@ -212,20 +208,13 @@ export default {
     *restoreBulkBackup({
       payload,
     }, { call, put, select }) {
-      let restoreBulkBackup = []
       yield put({ type: 'hideRestoreBackupModal' })
-      if (payload.bulkRestoreData && payload.selectedBackup) {
-        payload.bulkRestoreData.forEach((item) => {
-          let params = {}
-          Object.assign(params, payload.selectedBackup)
-          params.name = item.volumeName
-          params.fromBackup = item.url
-          restoreBulkBackup.push(params)
-        })
-      }
-      if (restoreBulkBackup.length > 0) {
-        for (let i = 0; i < restoreBulkBackup.length; i++) {
-          yield call(restore, restoreBulkBackup[i])
+      if (payload.length > 0) {
+        for (let i = 0; i < payload.length; i++) {
+          const resp = yield call(restore, payload[i])
+          if (resp && resp.status === 200) {
+            message.success(`Successfully restore backup volume ${payload[i].name}`, 3)
+          }
         }
       }
       const search = yield select(store => { return store.backup.search })
@@ -246,11 +235,35 @@ export default {
       const search = yield select(store => { return store.backup.search })
       yield put({ type: 'query', payload: { ...search } })
     },
+    *syncBackupVolume({
+      payload,
+    }, { call }) {
+      const backVolName = payload.name
+      const resp = yield call(syncBackupVolume, backVolName)
+      if (resp && resp.status === 200) {
+        message.success(`Successfully trigger backup volume ${backVolName} synchronization`, 5)
+      }
+    },
+    *syncAllBackupVolumes({
+      // eslint-disable-next-line no-unused-vars
+      _payload }, { call }) {
+      const resp = yield call(syncAllBackupVolumes)
+      if (resp && resp.status === 200) {
+        message.success('Successfully trigger all backup volumes synchronization', 5)
+      }
+    },
     *bulkCreateVolume({
       payload,
     }, { call, put, select }) {
       yield put({ type: 'hideBulkCreateVolumeStandModalVisible' })
-      yield payload.map((item) => call(createVolume, item))
+      if (payload.length > 0) {
+        for (let i = 0; i < payload.length; i++) {
+          const resp = yield call(createVolume, payload[i])
+          if (resp && resp.status === 200) {
+            message.success(`Successfully create DR volume ${payload[i].name}`, 3)
+          }
+        }
+      }
       const search = yield select(store => { return store.backup.search })
       yield put({ type: 'query', payload: { ...search } })
     },
@@ -263,7 +276,7 @@ export default {
       // For DR Volume
       yield put({ type: 'initModalUrl', found, payload })
       yield put({ type: 'showCreateVolumeStandModalVisible' })
-      yield put({ type: 'queryDiskTagsAndgetNodeTags' })
+      yield put({ type: 'queryDiskTagsAndGetNodeTags' })
     },
     *BulkCreateStandVolume({
       payload,
@@ -271,18 +284,18 @@ export default {
       const data = yield payload.backupVolume.map((item) => call(execAction, item.actions.backupList))
       const volumes = data.map((item, index) => {
         const volume = payload.backupVolume[index]
-        const found = item.data.find((backup) => backup.id === volume.lastBackupName)
+        const lastBackup = item.data.find((backup) => backup.id === volume.lastBackupName)
         return {
-          lastBackupUrl: found.url,
           volumeName: volume.id,
-          baseImage: volume.baseImage,
-          size: found.volumeSize,
+          lastBackupUrl: lastBackup.url,
+          size: lastBackup.volumeSize,
+          backingImage: lastBackup.volumeBackingImageName,
         }
       })
       // For DR Volume
       yield put({ type: 'initBulkCreateModalUrl', volumes })
       yield put({ type: 'showBulkCreateVolumeStandModalVisible' })
-      yield put({ type: 'queryDiskTagsAndgetNodeTags' })
+      yield put({ type: 'queryDiskTagsAndGetNodeTags' })
     },
     *deleteAllBackups({
       payload,
@@ -303,7 +316,6 @@ export default {
           wsChanges(payload.dispatch, payload.type, '1s', payload.ns)
         }
       }
-
       if (payload.type === 'backups' && getBackupVolumeName(payload.search)) {
         let wsBackup = yield select(state => state.backup.wsBackup)
         if (wsBackup) {
@@ -315,6 +327,15 @@ export default {
         // Clear the backup ws connection
         let wsBackup = yield select(state => state.backup.wsBackup)
         if (wsBackup) wsBackup.close(1000)
+      }
+
+      if (payload.type === 'backupbackingimages') {
+        const wsBbi = yield select(state => state.backingImage.wsBbi)
+        if (wsBbi) {
+          wsBbi.open()
+        } else {
+          wsChanges(payload.dispatch, payload.type, '1s', payload.ns)
+        }
       }
     },
     *stopWS({
@@ -342,14 +363,14 @@ export default {
       }
     },
     updateBackgroundBackups(state, action) {
-      let volumeName = getBackupVolumeName(state.search)
-      if (volumeName && action.payload && action.payload.data) {
-        let backupData = action.payload.data.filter((item) => {
-          return item.volumeName === volumeName
-        })
+      const volumeId = state.search?.keyword
+      const targetBackupVolume = state.backupVolumes.find((item) => item.name === volumeId) || {}
+      // Websocket (action.payload.data) returns all backupVolumes backups, we need to filter by volumeName + backupTargetName
+      if (targetBackupVolume?.volumeName && action.payload?.data) {
+        const backupData = action.payload.data.filter((item) => item.volumeName === targetBackupVolume?.volumeName && item.backupTargetName === targetBackupVolume?.backupTargetName)
         return {
           ...state,
-          backupData: backupData || [],
+          backupData,
         }
       }
       return {
@@ -409,7 +430,7 @@ export default {
       return { ...state, showBackuplabelsModalVisible: false, createVolumeStandModalKey: Math.random() }
     },
     initModalUrl(state, action) {
-      return { ...state, lastBackupUrl: action.found.url, volumeName: action.payload.name, baseImage: action.payload.baseImage, size: action.found.volumeSize }
+      return { ...state, lastBackupUrl: action.found.url, volumeName: action.payload.name, size: action.found.volumeSize }
     },
     initBulkCreateModalUrl(state, action) {
       return { ...state, backupVolumesForBulkCreate: action.volumes }
@@ -418,10 +439,10 @@ export default {
       return { ...state, ...action.payload, restoreBackupModalVisible: true, restoreBackupModalKey: Math.random() }
     },
     showRestoreBulkBackupModal(state, action) {
-      return { ...state, ...action.payload, isBulkRestore: true, restoreBackupModalVisible: true, restoreBackupModalKey: Math.random() }
+      return { ...state, ...action.payload, restoreBackupModalVisible: true, restoreBackupModalKey: Math.random() }
     },
     hideRestoreBackupModal(state) {
-      return { ...state, previousChecked: false, tagsLoading: true, restoreBackupModalVisible: false, isBulkRestore: false }
+      return { ...state, previousChecked: false, tagsLoading: true, restoreBackupModalVisible: false }
     },
     updateSorter(state, action) {
       saveSorter('backupList.sorter', action.payload)

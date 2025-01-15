@@ -15,19 +15,31 @@ export async function queryBackupList(name) {
   })
 }
 
-export async function queryTarget(params) {
-  return request({
-    url: '/v1/backuptargets',
-    method: 'get',
-    data: params,
-  })
-}
-
 export async function createVolume(params) {
   return request({
     url: '/v1/volumes',
     method: 'post',
     data: params,
+  })
+}
+
+export async function syncBackupVolume(volumeName) {
+  return request({
+    url: `/v1/backupvolumes/${volumeName}?action=backupVolumeSync`,
+    method: 'post',
+    data: {
+      syncBackupVolume: true,
+    },
+  })
+}
+
+export async function syncAllBackupVolumes() {
+  return request({
+    url: '/v1/backupvolumes',
+    method: 'put',
+    data: {
+      syncAllBackupVolumes: true,
+    },
   })
 }
 

@@ -123,11 +123,11 @@ export default {
           return item.managerType === 'replica'
         })
         engineImageData = currentData.filter((item) => {
-          return item.managerType === 'engine'
+          return item.managerType === 'engine' || item.managerType === 'aio'
         })
         engineImageData.forEach((item) => {
           replicaData.forEach((ele) => {
-            if (item.engineImage === ele.engineImage) {
+            if (item.image === ele.image) {
               item.replicaCurrentState = ele.currentState
             }
           })

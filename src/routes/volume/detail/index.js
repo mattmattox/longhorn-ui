@@ -9,58 +9,68 @@ import VolumeActions from '../VolumeActions'
 import VolumeInfo from './VolumeInfo'
 import styles from './index.less'
 import AttachHost from '../AttachHost'
+import DetachHost from '../DetachHost'
 import EngineUpgrade from '../EngineUpgrade'
 import UpdateReplicaCount from '../UpdateReplicaCount'
 import UpdateDataLocality from '../UpdateDataLocality'
+import UpdateSnapshotDataIntegrityModal from '../UpdateSnapshotDataIntegrityModal'
 import UpdateAccessMode from '../UpdateAccessMode'
+import UpdateUnmapMarkSnapChainRemovedModal from '../UpdateUnmapMarkSnapChainRemovedModal'
+import UpdateSnapshotMaxCountModal from '../UpdateSnapshotMaxCountModal.js'
+import UpdateSnapshotMaxSizeModal from '../UpdateSnapshotMaxSizeModal.js'
+import UpdateFreezeFilesystemForSnapshotModal from '../UpdateFreezeFilesystemForSnapshotModal'
 import Snapshots from './Snapshots'
 import RecurringJob from './RecurringJob'
 import EventList from './EventList'
 import SnapshotList from './SnapshotList'
+import CloneVolume from '../CloneVolume'
+import UpdateBackupTargetModal from '../UpdateBackupTargetModal'
 import CreatePVAndPVCSingle from '../CreatePVAndPVCSingle'
 import ChangeVolumeModal from '../ChangeVolumeModal'
 import ExpansionVolumeSizeModal from '../ExpansionVolumeSizeModal'
 import UpdateReplicaAutoBalanceModal from '../UpdateReplicaAutoBalanceModal'
+import CommonModal from '../components/CommonModal'
 import Salvage from '../Salvage'
 import { ReplicaList, ExpansionErrorDetail } from '../../../components'
-import ConfirmModalWithWorkload from '../ConfirmModalWithWorkload'
-import { genAttachHostModalProps, getEngineUpgradeModalProps, getUpdateReplicaCountModalProps, getUpdateDataLocalityModalProps, getUpdateAccessModeModalProps, getUpdateReplicaAutoBalanceModalProps } from '../helper'
+import { hasReadyBackingDisk } from '../../../utils/status'
+import {
+  getAttachHostModalProps,
+  getEngineUpgradeModalProps,
+  getUpdateReplicaCountModalProps,
+  getUpdateDataLocalityModalProps,
+  getUpdateAccessModeModalProps,
+  getUpdateReplicaAutoBalanceModalProps,
+  getUnmapMarkSnapChainRemovedModalProps,
+  getUpdateSnapshotDataIntegrityProps,
+  getUpdateReplicaSoftAntiAffinityModalProps,
+  getDetachHostModalProps,
+  getUpdateSnapshotMaxCountModalProps,
+  getUpdateSnapshotMaxSizeModalProps,
+  getUpdateFreezeFilesystemForSnapshotModalProps,
+} from '../helper'
+import { getBackupTargets } from '../../../utils/backupTarget'
 
 const confirm = Modal.confirm
 
-function VolumeDetail({ snapshotModal, dispatch, backup, engineimage, eventlog, host, volume, volumeId, setting, loading, backingImage, recurringJob }) {
-  const { data, attachHostModalVisible, engineUpgradeModalVisible, salvageModalVisible, updateReplicaCountModalVisible, createPVAndPVCModalSingleKey, defaultPVName, defaultPVCName, pvNameDisabled, previousNamespace, createPVAndPVCSingleVisible, nameSpaceDisabled, changeVolumeModalKey, changeVolumeActivate, changeVolumeModalVisible, previousChecked, expansionVolumeSizeModalVisible, expansionVolumeSizeModalKey, updateDataLocalityModalVisible, updateDataLocalityModalKey, updateAccessModeModalVisible, updateAccessModeModalKey, confirmModalWithWorkloadVisible, confirmModalWithWorkloadKey, updateReplicaAutoBalanceModalVisible, updateReplicaAutoBalanceModalKey, volumeRecurringJobs } = volume
-  const { backupStatus, backupTargetAvailable, backupTargetMessage } = backup
-  const { data: snapshotData, state: snapshotModalState } = snapshotModal
-  const { data: recurringJobData } = recurringJob
-  const hosts = host.data
-  const engineImages = engineimage.data
-  const selectedVolume = data.find(item => item.id === volumeId)
-  const currentBackingImage = selectedVolume && selectedVolume.backingImage && backingImage.data ? backingImage.data.find(item => item.name === selectedVolume.backingImage) : null
-  const settings = setting.data
-  const defaultDataLocalitySetting = settings.find(s => s.id === 'default-data-locality')
-  const engineUpgradePerNodeLimit = settings.find(s => s.id === 'concurrent-automatic-engine-upgrade-per-node-limit')
-  const defaultDataLocalityOption = defaultDataLocalitySetting && defaultDataLocalitySetting.definition && defaultDataLocalitySetting.definition.options ? defaultDataLocalitySetting.definition.options : []
-  const hasReplica = (selected, name) => {
-    if (selected && selected.replicas && selected.replicas.length > 0) {
-      return selected.replicas.some((item) => {
-        return item.name === name
-      })
-    }
-
-    return false
+const hasReplica = (selected, name) => {
+  if (selected && selected.replicas && selected.replicas.length > 0) {
+    return selected.replicas.some((item) => item.name === name)
   }
-  const hasEngine = (selected, name) => {
-    if (selected && selected.replicas && selected.replicas.length > 0) {
-      return selected.controllers.some((item) => {
-        return item.name === name
-      })
-    }
-
-    return false
+  return false
+}
+const hasEngine = (selected, name) => {
+  if (selected && selected.replicas && selected.replicas.length > 0) {
+    return selected.controllers.some((item) => item.name === name)
   }
-  const eventData = eventlog && eventlog.data ? eventlog.data.filter((ele) => {
-    if (ele.event && ele.event.involvedObject && ele.event.involvedObject.name && ele.event.involvedObject.kind && selectedVolume) {
+  return false
+}
+
+function filterEventLogByName(eventlog, selectedVolume) {
+  if (!eventlog || !eventlog.data) {
+    return []
+  }
+  return eventlog.data.filter((ele) => {
+    if (ele?.event?.involvedObject.name && ele.event.involvedObject.kind && selectedVolume) {
       switch (ele.event.involvedObject.kind) {
         case 'Engine':
           return hasEngine(selectedVolume, ele.event.involvedObject.name)
@@ -72,34 +82,122 @@ function VolumeDetail({ snapshotModal, dispatch, backup, engineimage, eventlog, 
           return false
       }
     }
-
     return false
-  }).map((ele, index) => {
-    return {
-      count: ele.event ? ele.event.count : '',
-      firstTimestamp: ele.event && ele.event.firstTimestamp ? ele.event.firstTimestamp : '',
-      lastTimestamp: ele.event && ele.event.lastTimestamp ? ele.event.lastTimestamp : '',
-      timestamp: ele.event && ele.event.lastTimestamp ? Date.parse(ele.event.lastTimestamp) : 0,
-      type: ele.event ? ele.event.type : '',
-      reason: ele.event ? ele.event.reason : '',
-      message: ele.event ? ele.event.message : '',
-      source: ele.event && ele.event.source && ele.event.source.component ? ele.event.source.component : '',
-      kind: ele.event && ele.event.involvedObject && ele.event.involvedObject.kind ? ele.event.involvedObject.kind : '',
-      name: ele.event && ele.event.involvedObject && ele.event.involvedObject.name ? ele.event.involvedObject.name : '',
-      id: index,
-    }
-  }) : []
-  eventData.sort((a, b) => {
-    return b.timestamp - a.timestamp
   })
+}
+
+const mapEventLogs = (eventLogs) => {
+  return eventLogs?.map((ele, index) => ({
+    count: ele?.event?.count || '',
+    firstTimestamp: ele?.event?.firstTimestamp || '',
+    lastTimestamp: ele?.event?.lastTimestamp || '',
+    timestamp: ele?.event?.lastTimestamp ? Date.parse(ele.event.lastTimestamp) : 0,
+    type: ele?.event?.type || '',
+    reason: ele?.event?.reason || '',
+    message: ele?.event?.message || '',
+    source: ele?.event?.source?.component || '',
+    kind: ele?.event?.involvedObject?.kind || '',
+    name: ele?.event?.involvedObject?.name || '',
+    id: index,
+  })) || []
+}
+
+const getEventData = (eventlog, selectedVolume) => {
+  const eventLogs = filterEventLogByName(eventlog, selectedVolume)
+  const mappedEventLogs = mapEventLogs(eventLogs)
+  mappedEventLogs.sort((a, b) => b.timestamp - a.timestamp)
+  return mappedEventLogs
+}
+
+function VolumeDetail({ snapshotModal, dispatch, backup, engineimage, eventlog, host, backupTarget, volume, volumeId, setting, loading, backingImage, recurringJob }) {
+  const {
+    data,
+    cloneVolumeType,
+    selectedSnapshot,
+    selected,
+    nodeTags,
+    diskTags,
+    tagsLoading,
+    attachHostModalVisible,
+    engineUpgradeModalVisible,
+    salvageModalVisible,
+    updateReplicaCountModalVisible,
+    createPVAndPVCModalSingleKey,
+    defaultPVName,
+    defaultPVCName,
+    pvNameDisabled,
+    previousNamespace,
+    createPVAndPVCSingleVisible,
+    nameSpaceDisabled,
+    changeVolumeModalKey,
+    changeVolumeActivate,
+    changeVolumeModalVisible,
+    previousChecked,
+    volumeCloneModalVisible,
+    updateBackupTargetModalVisible,
+    expansionVolumeSizeModalVisible,
+    expansionVolumeSizeModalKey,
+    updateDataLocalityModalVisible,
+    updateDataLocalityModalKey,
+    updateAccessModeModalVisible,
+    updateAccessModeModalKey,
+    updateReplicaAutoBalanceModalVisible,
+    updateReplicaAutoBalanceModalKey,
+    volumeRecurringJobs,
+    unmapMarkSnapChainRemovedModalKey,
+    unmapMarkSnapChainRemovedModalVisible,
+    updateSnapshotDataIntegrityModalVisible,
+    updateSnapshotDataIntegrityModalKey,
+    softAntiAffinityKey,
+    updateReplicaSoftAntiAffinityVisible,
+    updateReplicaSoftAntiAffinityModalKey,
+    detachHostModalVisible,
+    detachHostModalKey,
+    updateSnapshotMaxCountModalVisible,
+    updateSnapshotMaxSizeModalVisible,
+    updateFreezeFilesystemForSnapshotModalKey,
+    updateFreezeFilesystemForSnapshotModalVisible,
+  } = volume
+  const { backupStatus } = backup
+  const { data: snapshotData, state: snapshotModalState } = snapshotModal
+  const { data: recurringJobData } = recurringJob
+  const hosts = host.data
+  const engineImages = engineimage.data
+  const selectedVolume = data.find(item => item.id === volumeId)
+  const currentBackingImage = selectedVolume && selectedVolume.backingImage && backingImage.data ? backingImage.data.find(item => item.name === selectedVolume.backingImage) : null
+  const backingImageOptions = backingImage?.data?.filter(image => hasReadyBackingDisk(image)) || []
+  const settings = setting.data
+  const defaultDataLocalitySetting = settings.find(s => s.id === 'default-data-locality')
+  const defaultSnapshotDataIntegritySetting = settings.find(s => s.id === 'snapshot-data-integrity')
+  const engineUpgradePerNodeLimit = settings.find(s => s.id === 'concurrent-automatic-engine-upgrade-per-node-limit')
+
+  const defaultDataLocalityOption = defaultDataLocalitySetting?.definition?.options || []
+  const defaultDataLocalityValue = defaultDataLocalitySetting?.value || 'disabled'
+
+  const defaultSnapshotDataIntegrityOption = defaultSnapshotDataIntegritySetting?.definition?.options.map((item) => ({ key: item.toLowerCase(), value: item })) || []
+
+  if (defaultSnapshotDataIntegrityOption.length > 0) {
+    defaultSnapshotDataIntegrityOption.unshift({ key: 'ignored (follow the global setting)', value: 'ignored' })
+  }
+
+  const v1DataEngineEnabledSetting = settings.find(s => s.id === 'v1-data-engine')
+  const v2DataEngineEnabledSetting = settings.find(s => s.id === 'v2-data-engine')
+  const v1DataEngineEnabled = v1DataEngineEnabledSetting?.value === 'true'
+  const v2DataEngineEnabled = v2DataEngineEnabledSetting?.value === 'true'
+
+  const backupTargets = getBackupTargets(backupTarget)
+  const eventData = getEventData(eventlog, selectedVolume)
+
   if (!selectedVolume) {
     return (<div></div>)
   }
+
   const found = hosts.find(h => selectedVolume.controller && h.id === selectedVolume.controller.hostId)
   if (found) {
     selectedVolume.host = found.name
   }
   selectedVolume.replicas.forEach(replica => { replica.volState = selectedVolume.state })
+
   const replicaListProps = {
     dataSource: selectedVolume.replicas || [],
     purgeStatus: selectedVolume.purgeStatus || [],
@@ -145,6 +243,7 @@ function VolumeDetail({ snapshotModal, dispatch, backup, engineimage, eventlog, 
 
   const volumeActionsProps = {
     engineImages,
+    engineUpgradePerNodeLimit,
     takeSnapshot(record) {
       dispatch({
         type: 'snapshotModal/snapshotAction',
@@ -158,12 +257,26 @@ function VolumeDetail({ snapshotModal, dispatch, backup, engineimage, eventlog, 
         },
       })
     },
+    showVolumeCloneModal(record) {
+      dispatch({
+        type: 'volume/showCloneVolumeModalBefore',
+        payload: {
+          selected: record,
+        },
+      })
+    },
     showAttachHost(record) {
       dispatch({
         type: 'volume/showAttachHostModal',
         payload: {
           selected: record,
         },
+      })
+    },
+    showDetachHost(record) {
+      dispatch({
+        type: 'volume/showDetachHostModal',
+        payload: record,
       })
     },
     showSnapshots(record) {
@@ -183,14 +296,6 @@ function VolumeDetail({ snapshotModal, dispatch, backup, engineimage, eventlog, 
       dispatch({
         type: 'volume/deleteAndRedirect',
         payload: record,
-      })
-    },
-    detach(url) {
-      dispatch({
-        type: 'volume/detach',
-        payload: {
-          url,
-        },
       })
     },
     showEngineUpgrade(record) {
@@ -227,6 +332,22 @@ function VolumeDetail({ snapshotModal, dispatch, backup, engineimage, eventlog, 
         },
       })
     },
+    updateSnapshotMaxCount(record) {
+      dispatch({
+        type: 'volume/showUpdateSnapshotMaxCountModal',
+        payload: {
+          selected: record,
+        },
+      })
+    },
+    updateSnapshotMaxSize(record) {
+      dispatch({
+        type: 'volume/showUpdateSnapshotMaxSizeModal',
+        payload: {
+          selected: record,
+        },
+      })
+    },
     showUpdateReplicaCount(record) {
       dispatch({
         type: 'volume/showUpdateReplicaCountModal',
@@ -243,9 +364,25 @@ function VolumeDetail({ snapshotModal, dispatch, backup, engineimage, eventlog, 
         },
       })
     },
+    showUpdateSnapshotDataIntegrityModal(record) {
+      dispatch({
+        type: 'volume/showUpdateSnapshotDataIntegrityModal',
+        payload: {
+          selected: record,
+        },
+      })
+    },
     showUpdateAccessMode(record) {
       dispatch({
         type: 'volume/showUpdateAccessMode',
+        payload: {
+          selected: record,
+        },
+      })
+    },
+    showUpdateBackupTarget(record) {
+      dispatch({
+        type: 'volume/showUpdateBackupTarget',
         payload: {
           selected: record,
         },
@@ -279,6 +416,7 @@ function VolumeDetail({ snapshotModal, dispatch, backup, engineimage, eventlog, 
         })
       }
     },
+
     showCancelExpansionModal(record) {
       let message = ''
       let lastExpansionError = ''
@@ -319,18 +457,67 @@ function VolumeDetail({ snapshotModal, dispatch, backup, engineimage, eventlog, 
         },
       })
     },
-    confirmDetachWithWorkload() {
+    showUnmapMarkSnapChainRemovedModal(record) {
       dispatch({
-        type: 'volume/showConfirmDetachWithWorkload',
+        type: 'volume/showUnmapMarkSnapChainRemovedModal',
+        payload: {
+          selected: record,
+        },
+      })
+    },
+    showUpdateReplicaSoftAntiAffinityModal(record) {
+      dispatch({
+        type: 'volume/showUpdateReplicaSoftAntiAffinityModal',
+        payload: {
+          volume: record,
+          softAntiAffinityKey: 'updateReplicaSoftAntiAffinity',
+        },
+      })
+    },
+    showUpdateReplicaZoneSoftAntiAffinityModal(record) {
+      dispatch({
+        type: 'volume/showUpdateReplicaSoftAntiAffinityModal',
+        payload: {
+          volume: record,
+          softAntiAffinityKey: 'updateReplicaZoneSoftAntiAffinity',
+        },
+      })
+    },
+    showUpdateReplicaDiskSoftAntiAffinityModal(record) {
+      dispatch({
+        type: 'volume/showUpdateReplicaSoftAntiAffinityModal',
+        payload: {
+          volume: record,
+          softAntiAffinityKey: 'updateReplicaDiskSoftAntiAffinity',
+        },
+      })
+    },
+    trimFilesystem(record) {
+      if (record?.actions?.trimFilesystem) {
+        dispatch({
+          type: 'volume/trimFilesystem',
+          payload: {
+            params: record,
+            url: record.actions.trimFilesystem,
+          },
+        })
+      }
+    },
+    showUpdateFreezeFilesystemForSnapshotModal(record) {
+      dispatch({
+        type: 'volume/showUpdateFreezeFilesystemForSnapshotModal',
+        payload: {
+          selected: record,
+        },
       })
     },
   }
 
-  const attachHostModalProps = genAttachHostModalProps([selectedVolume], hosts, attachHostModalVisible, dispatch)
-
+  const attachHostModalProps = getAttachHostModalProps([selectedVolume], hosts, attachHostModalVisible, dispatch)
+  const detachHostModalProps = getDetachHostModalProps([selectedVolume], detachHostModalVisible, dispatch)
   const engineUpgradeModalProps = getEngineUpgradeModalProps([selectedVolume], engineImages, engineUpgradePerNodeLimit, engineUpgradeModalVisible, dispatch)
-
   const updateReplicaAutoBalanceModalProps = getUpdateReplicaAutoBalanceModalProps([selectedVolume], updateReplicaAutoBalanceModalVisible, dispatch)
+  const updateReplicaSoftAntiAffinityModalProps = getUpdateReplicaSoftAntiAffinityModalProps(selectedVolume, [], updateReplicaSoftAntiAffinityVisible, softAntiAffinityKey, dispatch)
 
   const recurringJobProps = {
     dataSource: volumeRecurringJobs,
@@ -355,9 +542,8 @@ function VolumeDetail({ snapshotModal, dispatch, backup, engineimage, eventlog, 
     volume: selectedVolume,
     volumeId,
     dispatch,
-    backupTargetAvailable,
-    backupTargetMessage,
     volumeHead: snapshotData.find(d => d.name === 'volume-head'),
+    backupTarget,
   }
 
   const salvageModalProps = {
@@ -394,7 +580,13 @@ function VolumeDetail({ snapshotModal, dispatch, backup, engineimage, eventlog, 
 
   const updateReplicaCountModalProps = getUpdateReplicaCountModalProps(selectedVolume, updateReplicaCountModalVisible, dispatch)
   const updateDataLocalityModalProps = getUpdateDataLocalityModalProps(selectedVolume, updateDataLocalityModalVisible, defaultDataLocalityOption, dispatch)
+  const unmapMarkSnapChainRemovedModalProps = getUnmapMarkSnapChainRemovedModalProps(selectedVolume, unmapMarkSnapChainRemovedModalVisible, dispatch)
+  const updateSnapshotDataIntegrityModalProps = getUpdateSnapshotDataIntegrityProps(selectedVolume, updateSnapshotDataIntegrityModalVisible, defaultSnapshotDataIntegrityOption, dispatch)
   const updateAccessModeModalProps = getUpdateAccessModeModalProps(selectedVolume, updateAccessModeModalVisible, dispatch)
+  const updateSnapshotMaxCountModalProps = getUpdateSnapshotMaxCountModalProps(selectedVolume,
+    updateSnapshotMaxCountModalVisible, dispatch)
+  const updateSnapshotMaxSizeModalProps = getUpdateSnapshotMaxSizeModalProps(selectedVolume, updateSnapshotMaxSizeModalVisible, dispatch)
+  const updateFreezeFilesystemForSnapshotModalProps = getUpdateFreezeFilesystemForSnapshotModalProps(selectedVolume, updateFreezeFilesystemForSnapshotModalVisible, dispatch)
   const createPVAndPVCSingleProps = {
     item: {
       defaultPVName,
@@ -478,28 +670,50 @@ function VolumeDetail({ snapshotModal, dispatch, backup, engineimage, eventlog, 
     },
   }
 
-  const confirmModalWithWorkloadProps = {
-    visible: confirmModalWithWorkloadVisible,
-    title: `Detach volume ${selectedVolume.name}`,
-    onOk() {
-      if (selectedVolume.actions && selectedVolume.actions.detach) {
-        dispatch({
-          type: 'volume/detach',
-          payload: {
-            url: selectedVolume.actions.detach,
-          },
-        })
-      }
+  const updateBackupTargetModalProps = {
+    item: selectedVolume,
+    visible: updateBackupTargetModalVisible,
+    backupTargets,
+    onOk(v, url) {
       dispatch({
-        type: 'volume/hideConfirmDetachWithWorkload',
-      })
-      dispatch({
-        type: 'snapshotModal/stopPolling',
+        type: 'volume/backupTargetUpdate',
+        payload: {
+          params: v,
+          url,
+        },
       })
     },
     onCancel() {
       dispatch({
-        type: 'volume/hideConfirmDetachWithWorkload',
+        type: 'volume/hideUpdateBackupTargetModal',
+      })
+    },
+  }
+
+  const volumeCloneModalBySnapshotProps = {
+    cloneType: cloneVolumeType,
+    volume: selected,
+    snapshot: selectedSnapshot,
+    visible: volumeCloneModalVisible,
+    diskTags,
+    nodeTags,
+    tagsLoading,
+    v1DataEngineEnabled,
+    v2DataEngineEnabled,
+    defaultDataLocalityOption,
+    defaultDataLocalityValue,
+    backingImageOptions,
+    onOk(vol) {
+      if (vol) {
+        dispatch({
+          type: 'volume/createClonedVolume',
+          payload: vol,
+        })
+      }
+    },
+    onCancel() {
+      dispatch({
+        type: 'volume/hideCloneVolumeModal',
       })
     },
   }
@@ -536,17 +750,25 @@ function VolumeDetail({ snapshotModal, dispatch, backup, engineimage, eventlog, 
             <EventList {...eventListProps} />
           </Col>
         </Row>
+        {updateBackupTargetModalVisible && <UpdateBackupTargetModal {...updateBackupTargetModalProps} />}
+        {volumeCloneModalVisible && <CloneVolume {...volumeCloneModalBySnapshotProps} />}
         {attachHostModalVisible && <AttachHost {...attachHostModalProps} />}
+        {detachHostModalVisible && <DetachHost key={detachHostModalKey} {...detachHostModalProps} />}
         {engineUpgradeModalVisible && <EngineUpgrade {...engineUpgradeModalProps} />}
         {updateReplicaCountModalVisible && <UpdateReplicaCount {...updateReplicaCountModalProps} />}
         {updateDataLocalityModalVisible ? <UpdateDataLocality key={updateDataLocalityModalKey} {...updateDataLocalityModalProps} /> : ''}
+        {unmapMarkSnapChainRemovedModalVisible ? <UpdateUnmapMarkSnapChainRemovedModal key={unmapMarkSnapChainRemovedModalKey} {...unmapMarkSnapChainRemovedModalProps} /> : ''}
+        {updateSnapshotDataIntegrityModalVisible ? <UpdateSnapshotDataIntegrityModal key={updateSnapshotDataIntegrityModalKey} {...updateSnapshotDataIntegrityModalProps} /> : ''}
         {updateAccessModeModalVisible ? <UpdateAccessMode key={updateAccessModeModalKey} {...updateAccessModeModalProps} /> : ''}
         {expansionVolumeSizeModalVisible ? <ExpansionVolumeSizeModal key={expansionVolumeSizeModalKey} {...expansionVolumeSizeModalProps}></ExpansionVolumeSizeModal> : ''}
         {salvageModalVisible ? <Salvage {...salvageModalProps} /> : ''}
         {changeVolumeModalVisible ? <ChangeVolumeModal key={changeVolumeModalKey} {...changeVolumeModalProps} /> : ''}
-        {createPVAndPVCSingleVisible ? <CreatePVAndPVCSingle key={createPVAndPVCModalSingleKey} {...createPVAndPVCSingleProps} /> : ''}
-        {confirmModalWithWorkloadVisible ? <ConfirmModalWithWorkload key={confirmModalWithWorkloadKey} {...confirmModalWithWorkloadProps} /> : ''}
+        { createPVAndPVCSingleVisible ? <CreatePVAndPVCSingle key={createPVAndPVCModalSingleKey} {...createPVAndPVCSingleProps} /> : '' }
+        { updateSnapshotMaxCountModalVisible ? <UpdateSnapshotMaxCountModal {...updateSnapshotMaxCountModalProps} /> : '' }
+        { updateSnapshotMaxSizeModalVisible ? <UpdateSnapshotMaxSizeModal {...updateSnapshotMaxSizeModalProps} /> : '' }
         {updateReplicaAutoBalanceModalVisible ? <UpdateReplicaAutoBalanceModal key={updateReplicaAutoBalanceModalKey} {...updateReplicaAutoBalanceModalProps} /> : ''}
+        {updateReplicaSoftAntiAffinityVisible ? <CommonModal key={updateReplicaSoftAntiAffinityModalKey} {...updateReplicaSoftAntiAffinityModalProps} /> : ''}
+        {updateFreezeFilesystemForSnapshotModalVisible ? <UpdateFreezeFilesystemForSnapshotModal key={updateFreezeFilesystemForSnapshotModalKey} {...updateFreezeFilesystemForSnapshotModalProps} /> : ''}
       </div>
     </div>
   )
@@ -559,6 +781,7 @@ VolumeDetail.propTypes = {
   backup: PropTypes.object,
   host: PropTypes.object,
   engineimage: PropTypes.object,
+  backupTarget: PropTypes.object,
   volumeId: PropTypes.string,
   loading: PropTypes.bool,
   snapshotModal: PropTypes.object,
@@ -568,4 +791,4 @@ VolumeDetail.propTypes = {
   recurringJob: PropTypes.object,
 }
 
-export default connect(({ snapshotModal, backup, host, engineimage, volume, loading, eventlog, setting, backingImage, recurringJob }, { match }) => ({ snapshotModal, backup, host, volume, engineimage, loading: loading.models.volume, volumeId: match.params.id, eventlog, setting, backingImage, recurringJob }))(VolumeDetail)
+export default connect(({ snapshotModal, backup, host, engineimage, backupTarget, volume, loading, eventlog, setting, backingImage, recurringJob }, { match }) => ({ snapshotModal, backup, host, volume, engineimage, backupTarget, loading: loading.models.volume, volumeId: match.params.id, eventlog, setting, backingImage, recurringJob }))(VolumeDetail)

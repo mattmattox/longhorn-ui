@@ -1,24 +1,61 @@
 import React from 'react'
 import PropTypes from 'prop-types'
-import { Table, Button, Icon, Tooltip } from 'antd'
+import { Table, Button, Icon, Tooltip, Tag } from 'antd'
 import BackingImageActions from './BackingImageActions'
 import { pagination } from '../../utils/page'
-import { formatMib } from '../../utils/formater'
+import { formatMib } from '../../utils/formatter'
+import { nodeTagColor, diskTagColor } from '../../utils/constants'
+import styles from './BackingImageList.less'
 
-function list({ loading, dataSource, deleteBackingImage, cleanUpDiskMap, showDiskStateMapDetail, rowSelection, downloadBackingImage, height }) {
+function list({
+  loading,
+  dataSource,
+  openBackupBackingImageModal,
+  backupProps,
+  deleteBackingImage,
+  showDiskStateMapDetail,
+  rowSelection,
+  createBackupBackingImage,
+  downloadBackingImage,
+  showUpdateMinCopiesCount,
+  height,
+}) {
   const backingImageActionsProps = {
     deleteBackingImage,
-    cleanUpDiskMap,
     downloadBackingImage,
+    createBackupBackingImage,
+    showUpdateMinCopiesCount,
+    openBackupBackingImageModal,
+    backupProps,
   }
-  const state = (record) => {
+
+  const dynamicStateIcon = (record) => {
     if (record.deletionTimestamp) {
       // Deleting
-      return (<Tooltip title={'Deleting'}><Icon type="sync" style={{ marginLeft: 10, color: '#f5222d' }} spin /></Tooltip>)
+      return (
+        <Tooltip title="Deleting backing image">
+          <Icon type="delete" className="color-error" />
+        </Tooltip>
+      )
     }
-    if (record.diskStateMap && Object.keys(record.diskStateMap).every((key) => record.diskStateMap[key] === 'failed')) {
+    return ''
+  }
+
+  const staticStateIcon = (record) => {
+    if (record.secret !== '' || record.secretNamespace !== '') {
+      // encrypted backing image
+      return (
+        <Tooltip title="Encrypted Backing Image">
+          <Icon className="color-warning" type="lock" />
+        </Tooltip>
+      )
+    }
+
+    if (record.diskFileStatusMap && Object.values(record.diskFileStatusMap).every((diskStatus) => diskStatus.state.includes('failed'))) {
+      // unavailable backing image
       return (<Tooltip title={'The backingImage is unavailable'}><Icon type="warning" style={{ marginLeft: 10, color: '#f5222d' }} /></Tooltip>)
     }
+
     return ''
   }
 
@@ -27,11 +64,14 @@ function list({ loading, dataSource, deleteBackingImage, cleanUpDiskMap, showDis
       title: 'Name',
       dataIndex: 'name',
       key: 'name',
-      width: 200,
+      width: 180,
+      sorter: (a, b) => a.name.localeCompare(b.name),
       render: (text, record) => {
         return (
-          <div onClick={() => { showDiskStateMapDetail(record) }} style={{ width: '100%', cursor: 'pointer' }}>
-            <Button type="link" block>{text}{state(record)}</Button>
+          <div onClick={() => { showDiskStateMapDetail(record) }}>
+            {staticStateIcon(record)}
+            <Button type="link" className={styles.encryptedBackingImage}>{text}</Button>
+            {dynamicStateIcon(record)}
           </div>
         )
       },
@@ -39,7 +79,8 @@ function list({ loading, dataSource, deleteBackingImage, cleanUpDiskMap, showDis
       title: 'UUID',
       dataIndex: 'uuid',
       key: 'uuid',
-      width: 150,
+      width: 120,
+      sorter: (a, b) => a.uuid.localeCompare(b.uuid),
       render: (text) => {
         return (
           <div>{text}</div>
@@ -49,7 +90,8 @@ function list({ loading, dataSource, deleteBackingImage, cleanUpDiskMap, showDis
       title: 'Size',
       dataIndex: 'size',
       key: 'size',
-      width: 150,
+      width: 100,
+      sorter: (a, b) => a.size - b.size,
       render: (text) => {
         return (
           <div>
@@ -57,15 +99,86 @@ function list({ loading, dataSource, deleteBackingImage, cleanUpDiskMap, showDis
           </div>
         )
       },
-    }, {
+    },
+    {
       title: 'Created From',
       dataIndex: 'sourceType',
       key: 'sourceType',
-      width: 200,
+      width: 120,
+      sorter: (a, b) => a.sourceType.localeCompare(b.sourceType),
       render: (text) => {
         return (
           <div>
             {text}
+          </div>
+        )
+      },
+    }, {
+      title: 'Minimum Copies',
+      dataIndex: 'minNumberOfCopies',
+      key: 'minNumberOfCopies',
+      width: 130,
+      sorter: (a, b) => a.minNumberOfCopies.toString().localeCompare(b.minNumberOfCopies.toString()),
+      render: (text) => {
+        return (
+          <div>
+            {text}
+          </div>
+        )
+      },
+    }, {
+      title: 'Data Engine',
+      dataIndex: 'dataEngine',
+      key: 'dataEngine',
+      width: 130,
+      sorter: (a, b) => (a.dataEngine || '').toString().localeCompare((b.dataEngine || '').toString()),
+      render: (text) => {
+        return (
+          <div>
+            {text}
+          </div>
+        )
+      },
+    }, {
+      title: 'Node Tags',
+      key: 'nodeSelector',
+      dataIndex: 'nodeSelector',
+      width: 120,
+      render: (_text, record) => {
+        const nodeTags = record.nodeSelector?.map((tag, index) => {
+          return (
+              <span style={{ marginBottom: '6px' }} key={index}>
+                <Tag color={nodeTagColor}>
+                  {tag}
+                </Tag>
+              </span>
+          )
+        }) || ''
+        return (
+          <div style={{ display: 'flex', justifyContent: 'space-between', flexDirection: 'column', alignItems: 'center' }}>
+            {nodeTags}
+          </div>
+        )
+      },
+    },
+    {
+      title: 'Disk Tags',
+      key: 'diskSelector',
+      dataIndex: 'diskSelector',
+      width: 120,
+      render: (_text, record) => {
+        const diskTags = record.diskSelector?.sort().map((tag, index) => {
+          return (
+              <span style={{ marginBottom: '6px' }} key={index}>
+                <Tag color={diskTagColor}>
+                  {tag}
+                </Tag>
+              </span>
+          )
+        }) || ''
+        return (
+          <div style={{ display: 'flex', justifyContent: 'space-between', flexDirection: 'column', alignItems: 'center' }}>
+            {diskTags}
           </div>
         )
       },
@@ -82,31 +195,32 @@ function list({ loading, dataSource, deleteBackingImage, cleanUpDiskMap, showDis
   ]
 
   return (
-    <div id="backingImageTable" style={{ flex: 1, height: '1px', overflow: 'hidden' }}>
-      <Table
-        className="common-table-class"
-        bordered={false}
-        columns={columns}
-        rowSelection={rowSelection}
-        dataSource={dataSource}
-        loading={loading}
-        simple
-        pagination={pagination}
-        rowKey={record => record.id}
-        scroll={{ x: 970, y: dataSource.length > 0 ? height : 1 }}
-      />
-    </div>
+    <Table
+      className="common-table-class"
+      bordered={false}
+      columns={columns}
+      rowSelection={rowSelection}
+      dataSource={dataSource}
+      loading={loading}
+      simple
+      pagination={pagination('backingImagePageSize')}
+      rowKey={record => record.id}
+      scroll={{ x: 970, y: dataSource.length > 0 ? height : 1 }}
+    />
   )
 }
 
 list.propTypes = {
   loading: PropTypes.bool,
   dataSource: PropTypes.array,
+  createBackupBackingImage: PropTypes.func,
   deleteBackingImage: PropTypes.func,
   showDiskStateMapDetail: PropTypes.func,
-  cleanUpDiskMap: PropTypes.func,
+  showUpdateMinCopiesCount: PropTypes.func,
+  openBackupBackingImageModal: PropTypes.func,
   rowSelection: PropTypes.object,
   height: PropTypes.number,
+  backupProps: PropTypes.object,
 }
 
 export default list

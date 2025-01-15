@@ -67,9 +67,21 @@ module.exports = [
       },
       {
         show: true,
+        key: 'backupTarget',
+        name: 'Backup Target',
+        icon: 'cloud-server',
+      },
+      {
+        show: true,
         key: 'instanceManager',
         name: 'Instance Manager Image',
         icon: 'apartment',
+      },
+      {
+        show: true,
+        key: 'systemBackups',
+        name: 'System Backup',
+        icon: 'file-sync',
       },
     ],
   },

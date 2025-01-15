@@ -1,3 +1,4 @@
+// key is the payload type, see model/app.js subscriptions()
 const dependency = {
   dashboard: {
     path: '/dashboard',
@@ -40,6 +41,9 @@ const dependency = {
       ns: 'backingImage',
       key: 'backingimages',
     }, {
+      ns: 'backupTarget',
+      key: 'backuptargets',
+    }, {
       ns: 'engineimage',
       key: 'engineimages',
     }, {
@@ -61,6 +65,13 @@ const dependency = {
       key: 'recurringjobs',
     }],
   },
+  backupTarget: {
+    path: '/backupTarget',
+    runWs: [{
+      ns: 'backupTarget',
+      key: 'backuptargets',
+    }],
+  },
   backingImage: {
     path: '/backingImage',
     runWs: [{
@@ -69,6 +80,15 @@ const dependency = {
     }, {
       ns: 'backingImage',
       key: 'backingimages',
+    }, {
+      ns: 'backingImage',
+      key: 'backupbackingimages',
+    }, {
+      ns: 'setting',
+      key: 'settings',
+    }, {
+      ns: 'backupTarget',
+      key: 'backuptargets',
     }],
   },
   settings: {
@@ -90,6 +110,9 @@ const dependency = {
       ns: 'backingImage',
       key: 'backingimages',
     }, {
+      ns: 'backingImage',
+      key: 'backupbackingimages',
+    }, {
       ns: 'backup',
       key: 'backupvolumes',
     }, {
@@ -108,8 +131,15 @@ const dependency = {
     path: '/orphanedData',
     runWs: [],
   },
+  systemBackups: {
+    path: '/systemBackups',
+    runWs: [{
+      ns: 'systemBackups',
+      key: 'systemBackups',
+    }],
+  },
 }
-const allWs = [{
+const list = [{
   ns: 'volume',
   key: 'volumes',
 }, {
@@ -125,8 +155,14 @@ const allWs = [{
   ns: 'backingImage',
   key: 'backingimages',
 }, {
+  ns: 'backingImage',
+  key: 'backupbackingimages',
+}, {
   ns: 'engineimage',
   key: 'engineimages',
+}, {
+  ns: 'backupTarget',
+  key: 'backuptargets',
 }, {
   ns: 'recurringJob',
   key: 'recurringjobs',
@@ -136,49 +172,58 @@ const allWs = [{
 }, {
   ns: 'backup',
   key: 'backups',
+}, {
+  ns: 'systemBackups',
+  key: 'systembackups',
+}, {
+  ns: 'systemBackups',
+  key: 'systemrestores',
 }]
 
 const httpDataDependency = {
   '/dashboard': ['volume', 'host', 'eventlog'],
   '/node': ['volume', 'host', 'setting'],
-  '/volume': ['volume', 'host', 'setting', 'backingImage', 'engineimage', 'recurringJob', 'backup'],
+  '/volume': ['volume', 'host', 'setting', 'backupTarget', 'backingImage', 'engineimage', 'recurringJob', 'backup'],
   '/engineimage': ['engineimage'],
+  '/backingImage': ['volume', 'backingImage', 'backupTarget', 'backup'],
   '/recurringJob': ['recurringJob'],
-  '/backingImage': ['volume', 'backingImage'],
+  '/backupTarget': ['backupTarget'],
   '/setting': ['setting'],
   '/backup': ['host', 'setting', 'backingImage', 'backup'],
   '/instanceManager': ['volume', 'instanceManager'],
   '/orphanedData': ['orphanedData'],
+  '/systemBackups': ['systemBackups', 'backup'],
 }
 
 export function getDataDependency(pathName) {
   let keys = Object.keys(dependency).filter((key) => {
     if (pathName && dependency[key].path) {
-      let max = dependency[key].path.length
-      return dependency[key].path === pathName.substring(0, max)
+      /* /backup will be mis-included in /backupTarget path if using the else condition */
+      if (pathName === '/backupTarget') {
+        return dependency[key].path === pathName
+      } else {
+        const max = dependency[key].path.length
+        return dependency[key].path === pathName.substring(0, max)
+      }
     }
     return false
   })
-
   if (keys && keys.length === 1) {
     let modal = dependency[keys[0]]
-    modal.stopWs = allWs.filter((item) => {
-      return modal.runWs.every((ele) => {
-        return ele.ns !== item.ns
-      })
+    modal.stopWs = list.filter((item) => {
+      return modal.runWs.every((ele) => ele.ns !== item.ns)
     })
-
     return dependency[keys[0]]
   }
-
   return null
 }
 
 export function enableQueryData(pathName, ns) {
   let canQueryData = false
-
   // Determining whether other dependencies model need to request data
-  if (Object.keys(httpDataDependency).some((key) => pathName.startsWith(key) && httpDataDependency[key].find((item) => item === ns))) {
+  if (Object.keys(httpDataDependency).some((key) => pathName.startsWith(key)
+    && httpDataDependency[key].find((item) => item === ns))
+  ) {
     canQueryData = true
   }
 

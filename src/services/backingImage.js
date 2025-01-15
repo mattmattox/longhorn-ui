@@ -9,6 +9,21 @@ export async function query(params) {
   })
 }
 
+export async function execAction(url, params) {
+  return request({
+    url,
+    method: 'post',
+    data: params,
+  })
+}
+
+export async function queryBackupBackingImageList() {
+  return request({
+    url: '/v1/backupbackingimages',
+    method: 'get',
+  })
+}
+
 export async function create(params) {
   return request({
     url: '/v1/backingimages',
@@ -16,6 +31,13 @@ export async function create(params) {
     data: {
       ...params,
     },
+  })
+}
+
+export async function deleteBackupBackingImage(params) {
+  return request({
+    url: `/v1/backupbackingimages/${params.name}`,
+    method: 'delete',
   })
 }
 
@@ -28,9 +50,21 @@ export async function deleteBackingImage(params) {
   }
 }
 
+export async function bulkDownload(images) {
+  for (const image of images) {
+    if (image?.name) {
+      // eslint-disable-next-line no-underscore-dangle
+      const downloadUrl = `${window.__pathname_prefix__}${window.__pathname_prefix__.endsWith('/') ? '' : '/'}v1/backingimages/${image.name}/download`
+      // specific way to download multiple files with one click, User may allow the browser to download multiple files at once
+      Object.assign(document.createElement('a'), { href: downloadUrl, download: image.name }).click()
+    }
+  }
+}
+
 export async function download(params) {
   if (params && params.name) {
-    window.location.href = `${ window.__pathname_prefix__ }${ window.__pathname_prefix__.endsWith('/') ? '' : '/'}v1/backingimages/${params.name}/download` // eslint-disable-line
+    // eslint-disable-next-line no-underscore-dangle
+    window.location.href = `${window.__pathname_prefix__}${window.__pathname_prefix__.endsWith('/') ? '' : '/'}v1/backingimages/${params.name}/download`
   }
 }
 

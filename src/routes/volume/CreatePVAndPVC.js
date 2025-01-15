@@ -1,15 +1,16 @@
 import React from 'react'
 import PropTypes from 'prop-types'
-import { Form, Input, Checkbox, Alert, Radio } from 'antd'
+import { Form, Input, Checkbox, Alert, Radio, Icon, Tooltip } from 'antd'
 import { ModalBlur } from '../../components'
+import style from './CreatePVAndPVC.less'
 const FormItem = Form.Item
 
 const formItemLayout = {
   labelCol: {
-    span: 7,
+    span: 8,
   },
   wrapperCol: {
-    span: 15,
+    span: 14,
   },
 }
 
@@ -98,6 +99,18 @@ const modal = ({
         <FormItem label="Access Mode" {...formItemLayout}>
           <Input disabled={true} value={'<Volume Access Mode>'} />
         </FormItem>
+        <FormItem label="Storage Class Name" {...formItemLayout}>
+          {getFieldDecorator('storageClassName', {
+            initialValue: '',
+          })(<div className={style.storageClassName}>
+            <Input disabled={item.pvNameDisabled} />
+            <Tooltip title={'If no value is provided, Longhorn will first utilize the storageClassName stored in the backup volume if the volume is being restored from a backup. Otherwise, Longhorn will use the storageClassName specified in the default setting.'}>
+              <span className={style.icon}>
+                <Icon type="info-circle" />
+              </span>
+            </Tooltip>
+          </div>)}
+        </FormItem>
         <FormItem label="File System" {...formItemLayout}>
           {getFieldDecorator('fsType', {
             initialValue: 'ext4',
@@ -145,7 +158,7 @@ const modal = ({
       </Form>
 
       {previousChecked ? <div style={{ marginTop: 20 }}>
-        <Alert message="If volume has a default namespace, pvc uses this namepace, if not, it uses the newly entered namespace" type="info" showIcon />
+        <Alert message="If volume has a default namespace, pvc uses this namespace, if not, it uses the newly entered namespace" type="info" showIcon />
       </div> : ''}
     </ModalBlur>
   )

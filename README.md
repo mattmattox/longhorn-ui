@@ -1,8 +1,8 @@
 # Longhorn UI
-[![Build Status](https://drone-publish.longhorn.io/api/badges/longhorn/longhorn-ui/status.svg)](https://drone-publish.longhorn.io/longhorn/longhorn-ui)
+[![Build Status](https://github.com/longhorn/longhorn-ui/actions/workflows/build.yml/badge.svg)](https://github.com/longhorn/longhorn-ui/actions/workflows/build.yml)
 --------
 
-Admin UI for Longhorn Manger
+Admin UI for Longhorn Manager
 
 ## Usage
 
@@ -12,20 +12,26 @@ Prerequisites:
 
 Setup:
 ```bash
-  git clone 'https://github.com/rancher/longhorn-ui'
+  git clone 'https://github.com/longhorn/longhorn-ui'
   cd 'longhorn-ui'
-  npm install
+  npm ci
 ```
 Run development server pointed at some Longhorn Manager API
 ```bash
   LONGHORN_MANAGER_IP="http://longhorn:9500/" npm run dev
 ```
+
+If you are using Gnome as desktop environment, then you should use
+```bash
+  DE=generic LONGHORN_MANAGER_IP="http://longhorn:9500/" npm run dev
+```
+
 Compiling for distribution
 ```bash
   npm run build
 ```
 
-Build and run a docker image
+Build and run a docker image, longhorn UI will listen on localhost:8000
 ```bash
   make
   make LONGHORN_MANAGER_IP=http://longhorn:9500 run

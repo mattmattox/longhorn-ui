@@ -1,10 +1,10 @@
 import React from 'react'
 import PropTypes from 'prop-types'
-import { Table, Modal, Icon, message, Tooltip, Progress } from 'antd'
+import { Table, Modal, Icon, message, Tooltip, Progress, Input, Button } from 'antd'
 import { CopyToClipboard } from 'react-copy-to-clipboard'
 import { DropOption } from '../../components'
 import { formatDate } from '../../utils/formatDate'
-import { formatMib } from '../../utils/formater'
+import { formatMib } from '../../utils/formatter'
 import { sortTable } from '../../utils/sort'
 import { setSortOrder } from '../../utils/store'
 import { pagination } from '../../utils/page'
@@ -14,29 +14,22 @@ import C from '../../utils/constants'
 const confirm = Modal.confirm
 
 const BackupUrl = ({ url = '' }) => {
-  const onCopy = (text, copySuccess) => { // eslint-disable-line no-unused-vars
+  const onCopy = (_text, copySuccess) => {
     if (copySuccess) {
       message.success('Copied', 1.5)
     } else {
       message.error('Copy failed', 1.5)
     }
   }
-
   return (
     <div>
-      <h3> Backup URL: </h3>
-      <p style={{ marginTop: 20, display: 'inline-block', wordBreak: 'break-all', fontSize: '1.2em' }}>
-        {url}
-        {
-          url ? <CopyToClipboard onCopy={onCopy} text={url}>
-            <Icon
-              className="color-link"
-              style={{ marginLeft: 5, fontSize: '1.2em', cursor: 'pointer' }}
-              type="copy"
-            />
-          </CopyToClipboard> : 'URL no available'
-        }
-      </p>
+      <h3> Backup URL </h3>
+      <div>
+        <Input defaultValue={url} style={{ width: '95%' }} />
+        <CopyToClipboard onCopy={onCopy} text={url}>
+          <Button type="primary" icon="copy" />
+        </CopyToClipboard>
+      </div>
     </div>
   )
 }
@@ -54,26 +47,22 @@ class List extends React.Component {
   }
 
   componentDidMount() {
-    let height = document.getElementById('backDetailTable').offsetHeight - C.ContainerMarginHeight
-    this.setState({
-      height,
-    })
-    window.onresize = () => {
-      height = document.getElementById('backDetailTable').offsetHeight - C.ContainerMarginHeight
-      this.setState({
-        height,
-      })
-      this.props.dispatch({ type: 'app/changeNavbar' })
-    }
+    this.onResize()
+    window.addEventListener('resize', this.onResize)
   }
 
   componentWillUnmount() {
-    window.onresize = () => {
-      this.props.dispatch({ type: 'app/changeNavbar' })
-    }
+    window.removeEventListener('resize', this.onResize)
   }
 
-  fomartData = (data, key) => {
+  onResize = () => {
+    const height = document.getElementById('backDetailTable').offsetHeight - C.ContainerMarginHeight
+    this.setState({
+      height,
+    })
+  }
+
+  formatData = (data, key) => {
     if (this.isJson(data)) {
       let obj = JSON.parse(data)
 
@@ -96,7 +85,7 @@ class List extends React.Component {
     }
   }
 
-  onCopy = (text, copySuccess) => { // eslint-disable-line no-unused-vars
+  onCopy = (_text, copySuccess) => {
     if (copySuccess) {
       message.success('Copied', 1.5)
     } else {
@@ -137,7 +126,7 @@ class List extends React.Component {
         title: 'ID',
         dataIndex: 'id',
         key: 'id',
-        width: '15%',
+        width: 100,
         sorter: (a, b) => sortTable(a, b, 'id'),
         render: (text) => {
           return (
@@ -150,7 +139,7 @@ class List extends React.Component {
         title: 'Volume',
         dataIndex: 'volumeName',
         key: 'volumeName',
-        width: '14%',
+        width: 120,
         render: (text, record) => {
           let errorMessage = record.messages && record.messages.error ? record.messages.error : ''
           return (
@@ -169,7 +158,7 @@ class List extends React.Component {
         title: 'Creation State',
         dataIndex: 'state',
         key: 'state',
-        width: 150,
+        width: 120,
         render: (text, record) => {
           if (record.state === 'InProgress') {
             return (
@@ -189,11 +178,37 @@ class List extends React.Component {
         },
       },
       {
+        title: 'Backup Mode',
+        dataIndex: 'backupMode',
+        key: 'backupMode',
+        width: 120,
+        sorter: (a, b) => sortTable(a, b, 'backupMode'),
+        render: (text) => {
+          return (
+            <div>
+              {text || 'incremental'}
+            </div>
+          )
+        },
+      },
+      {
+        title: 'Backup Target',
+        dataIndex: 'backupTargetName',
+        key: 'backupTargetName',
+        width: 120,
+        sorter: (a, b) => sortTable(a, b, 'backupTargetName'),
+        render: (text) => {
+          return (
+            <div>{text}</div>
+          )
+        },
+      },
+      {
         title: 'Snapshot Name',
         dataIndex: 'snapshotName',
         key: 'snapshotName',
         align: 'center',
-        width: '16.72%',
+        width: 150,
         sorter: (a, b) => sortTable(a, b, 'snapshotName'),
         render: (text) => {
           return (
@@ -206,7 +221,7 @@ class List extends React.Component {
         title: 'Size',
         dataIndex: 'size',
         key: 'size',
-        width: 100,
+        width: 90,
         sorter: (a, b) => sortTable(a, b, 'size'),
         render: (text, record) => {
           return (
@@ -216,15 +231,41 @@ class List extends React.Component {
           )
         },
       }, {
-        title: <div>PV/PVC</div>,
+        title: 'Re-Uploaded Data Size',
+        dataIndex: 'reUploadedDataSize',
+        key: 'reUploadedDataSize',
+        width: 150,
+        sorter: (a, b) => sortTable(a, b, 'reUploadedDataSize'),
+        render: (text, record) => {
+          return (
+            <div>
+              {record.state === 'Completed' && formatMib(text)}
+            </div>
+          )
+        },
+      }, {
+        title: 'Newly Uploaded Data Size',
+        dataIndex: 'newlyUploadDataSize',
+        key: 'newlyUploadDataSize',
+        width: 150,
+        sorter: (a, b) => sortTable(a, b, 'newlyUploadDataSize'),
+        render: (text, record) => {
+          return (
+            <div>
+              {record.state === 'Completed' && formatMib(text)}
+            </div>
+          )
+        },
+      }, {
+        title: 'PV/PVC',
         dataIndex: 'labels',
         key: 'KubernetesStatus',
-        width: '7.63%',
+        width: 90,
         render: (record) => {
           let storageObj = {}
 
           if (record) {
-            storageObj = this.fomartData(record.KubernetesStatus)
+            storageObj = this.formatData(record.KubernetesStatus)
           }
           let title = (<div>
             <div><span>PV Name</span><span>: </span><span>{storageObj.pvName}</span></div>
@@ -259,12 +300,12 @@ class List extends React.Component {
         title: 'Workload/Pod',
         dataIndex: 'labels',
         key: 'WorkloadNameAndPodName',
-        width: '12.5%',
+        width: 150,
         render: (record) => {
           let storageObj = {}
 
           if (record) {
-            storageObj = this.fomartData(record.KubernetesStatus)
+            storageObj = this.formatData(record.KubernetesStatus)
             storageObj.snapshotCreated = record.snapshotCreated ? record.snapshotCreated : ''
           }
 
@@ -299,7 +340,7 @@ class List extends React.Component {
         title: 'Snapshot Created',
         dataIndex: 'snapshotCreated',
         key: 'snapshotCreated',
-        width: 260,
+        width: 150,
         sorter: (a, b) => sortTable(a, b, 'snapshotCreated'),
         render: (text) => {
           return (
@@ -312,14 +353,14 @@ class List extends React.Component {
         title: 'Labels',
         dataIndex: 'labels',
         key: 'labels',
-        width: 100,
+        width: 80,
         render: (obj, record) => {
           if (obj && record.snapshotCreated) {
             obj.snapshotCreated = record.snapshotCreated
           }
           return (
             <div onClick={() => { showBackupLabels(obj) }}>
-              <Icon style={{ fontSize: '18px', color: obj ? '#108eb9' : '#cccccc', cursor: 'pointer' }} type="tags" />
+              <Icon style={{ fontSize: '18px', color: obj ? '#108ee9' : '#cccccc', cursor: 'pointer' }} type="tags" />
             </div>
           )
         },
@@ -352,9 +393,8 @@ class List extends React.Component {
     }
 
     return (
-      <div id="backDetailTable" style={{ overflow: 'hidden', flex: 1 }}>
+      <div id="backDetailTable">
         <Table
-          className="common-table-class"
           locale={locale}
           bordered={false}
           columns={columns}

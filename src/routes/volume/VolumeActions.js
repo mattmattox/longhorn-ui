@@ -5,7 +5,38 @@ import { DropOption } from '../../components'
 import { detachable, attachable, isRestoring } from './helper'
 const confirm = Modal.confirm
 
-function actions({ selected, engineImages, showAttachHost, detach, showEngineUpgrade, deleteVolume, showBackups, showSalvage, rollback, showUpdateReplicaCount, showExpansionVolumeSizeModal, showCancelExpansionModal, createPVAndPVC, changeVolume, confirmDetachWithWorkload, showUpdateDataLocality, showUpdateAccessMode, showUpdateReplicaAutoBalanceModal, engineUpgradePerNodeLimit, commandKeyDown }) {
+function actions({
+  selected,
+  engineImages,
+  showAttachHost,
+  showDetachHost,
+  showEngineUpgrade,
+  deleteVolume,
+  showBackups,
+  showSalvage,
+  rollback,
+  showVolumeCloneModal,
+  showUpdateReplicaCount,
+  updateSnapshotMaxCount,
+  updateSnapshotMaxSize,
+  showExpansionVolumeSizeModal,
+  showCancelExpansionModal,
+  createPVAndPVC,
+  changeVolume,
+  showUpdateDataLocality,
+  showUpdateAccessMode,
+  showUpdateBackupTarget,
+  showUpdateReplicaAutoBalanceModal,
+  showUnmapMarkSnapChainRemovedModal,
+  engineUpgradePerNodeLimit,
+  trimFilesystem,
+  showUpdateSnapshotDataIntegrityModal,
+  showUpdateReplicaSoftAntiAffinityModal,
+  showUpdateReplicaZoneSoftAntiAffinityModal,
+  showUpdateReplicaDiskSoftAntiAffinityModal,
+  showUpdateFreezeFilesystemForSnapshotModal,
+  commandKeyDown,
+}) {
   const deleteWranElement = (record) => {
     let workloadResources = ''
     let hasPvTooltipText = ''
@@ -36,6 +67,7 @@ function actions({ selected, engineImages, showAttachHost, detach, showEngineUpg
     </div>)
   }
   const handleMenuClick = (event, record) => {
+    event.domEvent?.stopPropagation?.()
     switch (event.key) {
       case 'attach':
         showAttachHost(record)
@@ -50,6 +82,8 @@ function actions({ selected, engineImages, showAttachHost, detach, showEngineUpg
           let title = deleteWranElement(record)
           confirm({
             width: 700,
+            okType: 'danger',
+            okText: 'Delete',
             title,
             onOk() {
               deleteVolume(record)
@@ -58,16 +92,7 @@ function actions({ selected, engineImages, showAttachHost, detach, showEngineUpg
         }
         break
       case 'detach':
-        if (record.kubernetesStatus && record.kubernetesStatus.workloadsStatus && !record.kubernetesStatus.lastPodRefAt) {
-          confirmDetachWithWorkload(record)
-        } else {
-          confirm({
-            title: `Are you sure you want to detach volume ${record.name} ?`,
-            onOk() {
-              detach(record.actions.detach)
-            },
-          })
-        }
+        showDetachHost(record)
         break
       case 'engineUpgrade':
         showEngineUpgrade(record)
@@ -75,9 +100,12 @@ function actions({ selected, engineImages, showAttachHost, detach, showEngineUpg
       case 'backups':
         showBackups(record)
         break
+      case 'cloneVolume':
+        showVolumeCloneModal(record)
+        break
       case 'rollback':
         confirm({
-          title: `Are you sure you want to rollback volume ${record.name} ?`,
+          title: `Are you sure you want to rollback volume ${record.name}?`,
           onOk() {
             rollback(record)
           },
@@ -86,11 +114,23 @@ function actions({ selected, engineImages, showAttachHost, detach, showEngineUpg
       case 'updateReplicaCount':
         showUpdateReplicaCount(record)
         break
+      case 'updateSnapshotMaxCount':
+        updateSnapshotMaxCount(record)
+        break
+      case 'updateSnapshotMaxSize':
+        updateSnapshotMaxSize(record)
+        break
       case 'updateDataLocality':
         showUpdateDataLocality(record)
         break
+      case 'updateSnapshotDataIntegrity':
+        showUpdateSnapshotDataIntegrityModal(record)
+        break
       case 'updateAccessMode':
         showUpdateAccessMode(record)
+        break
+      case 'updateBackupTargetName':
+        showUpdateBackupTarget(record)
         break
       case 'pvAndpvcCreate':
         createPVAndPVC(record)
@@ -107,11 +147,34 @@ function actions({ selected, engineImages, showAttachHost, detach, showEngineUpg
       case 'updateReplicaAutoBalance':
         showUpdateReplicaAutoBalanceModal(record)
         break
+      case 'updateUnmapMarkSnapChainRemoved':
+        showUnmapMarkSnapChainRemovedModal(record)
+        break
+      case 'updateReplicaSoftAntiAffinity':
+        showUpdateReplicaSoftAntiAffinityModal(record)
+        break
+      case 'updateReplicaZoneSoftAntiAffinity':
+        showUpdateReplicaZoneSoftAntiAffinityModal(record)
+        break
+      case 'updateReplicaDiskSoftAntiAffinity':
+        showUpdateReplicaDiskSoftAntiAffinityModal(record)
+        break
+      case 'updateFreezeFilesystemForSnapshot':
+        showUpdateFreezeFilesystemForSnapshotModal(record)
+        break
+      case 'trimFilesystem':
+        confirm({
+          title: 'Are you sure you want to trim the filesystem?',
+          onOk() {
+            trimFilesystem(record)
+          },
+        })
+        break
       default:
     }
   }
   const toggleRollbackAndUpgradeAction = (currentActions) => {
-    if (selected.currentImage === selected.engineImage) {
+    if (selected.currentImage === selected.image) {
       const rollbackActionIndex = currentActions.findIndex(item => item.key === 'rollback')
       if (rollbackActionIndex > -1) {
         const upgradeAction = { key: 'engineUpgrade', name: 'Upgrade' }
@@ -146,24 +209,33 @@ function actions({ selected, engineImages, showAttachHost, detach, showEngineUpg
     if (engineUpgradePerNodeLimit && engineUpgradePerNodeLimit.value !== '0') {
       let defaultEngineImage = engineImages.find(engineImage => engineImage.default)
       if (defaultEngineImage) {
-        return selected.engineImage === defaultEngineImage.image
+        return selected.image === defaultEngineImage.image
       }
       return true
     }
     return false
   }
 
-  const upgradingEngine = () => selected.currentImage !== selected.engineImage
+  const upgradingEngine = () => selected.currentImage !== selected.image
 
   const allActions = [
     { key: 'attach', name: 'Attach', disabled: !attachable(selected) },
     { key: 'detach', name: 'Detach', disabled: !detachable(selected), tooltip: isRwxVolumeWithWorkload() ? 'The volume access mode is `ReadWriteMany`, Please ensure that the workloads are scaled down before trying to detach the volume' : '' },
     { key: 'salvage', name: 'Salvage', disabled: isRestoring(selected) },
-    { key: 'engineUpgrade', name: 'Upgrade Engine', disabled: isAutomaticallyUpgradeEngine() || (engineImages.findIndex(engineImage => selected.engineImage !== engineImage.image) === -1) || isRestoring(selected) || (selected.state !== 'detached' && selected.state !== 'attached') },
+    { key: 'engineUpgrade', name: 'Upgrade Engine', disabled: isAutomaticallyUpgradeEngine() || (engineImages.findIndex(engineImage => selected.image !== engineImage.image) === -1) || isRestoring(selected) || (selected.state !== 'detached' && selected.state !== 'attached') || selected?.dataEngine === 'v2' },
     { key: 'updateReplicaCount', name: 'Update Replicas Count', disabled: selected.state !== 'attached' || isRestoring(selected) || selected.standby || upgradingEngine() },
     { key: 'updateDataLocality', name: 'Update Data Locality', disabled: !canUpdateDataLocality() || upgradingEngine() },
+    { key: 'updateSnapshotDataIntegrity', name: 'Snapshot Data Integrity', disabled: false },
     { key: 'updateAccessMode', name: 'Update Access Mode', disabled: (selected.kubernetesStatus && selected.kubernetesStatus.pvStatus) || !canUpdateAccessMode() },
+    { key: 'updateBackupTargetName', name: 'Update Backup Target' },
     { key: 'updateReplicaAutoBalance', name: 'Update Replicas Auto Balance', disabled: !canUpdateReplicaAutoBalance() },
+    { key: 'updateUnmapMarkSnapChainRemoved', name: 'Allow snapshots removal during trim', disabled: false },
+    { key: 'updateReplicaSoftAntiAffinity', name: 'Update Replica Soft Anti Affinity', disabled: false },
+    { key: 'updateReplicaZoneSoftAntiAffinity', name: 'Update Replica Zone Soft Anti Affinity', disabled: false },
+    { key: 'updateSnapshotMaxCount', name: 'Update Snapshot Max Count', disabled: false },
+    { key: 'updateSnapshotMaxSize', name: 'Update Snapshot Max Size', disabled: false },
+    { key: 'updateReplicaDiskSoftAntiAffinity', name: 'Update Replica Disk Soft Anti Affinity', disabled: false },
+    { key: 'updateFreezeFilesystemForSnapshot', name: 'Update Freeze Filesystem For Snapshot', disabled: false },
   ]
   const availableActions = [{ key: 'backups', name: 'Backups', disabled: selected.standby || isRestoring(selected) }, { key: 'delete', name: 'Delete' }]
 
@@ -175,7 +247,8 @@ function actions({ selected, engineImages, showAttachHost, detach, showEngineUpg
     }
   })
 
-  availableActions.push({ key: 'expandVolume', name: 'Expand Volume', disabled: selected.state !== 'detached' || (selected.conditions && selected.conditions.scheduled && selected.conditions.scheduled.status && selected.conditions.scheduled.status.toLowerCase() === 'false') })
+  availableActions.push({ key: 'cloneVolume', name: 'Clone Volume', disabled: selected.standby || isRestoring(selected) })
+  availableActions.push({ key: 'expandVolume', name: 'Expand Volume', disabled: selected?.conditions?.Scheduled?.status?.toLowerCase() === 'false' })
   if (selected.controllers && selected.controllers[0] && !selected.controllers[0].isExpanding && selected.controllers[0].size !== 0 && selected.controllers[0].size !== selected.size && selected.controllers[0].size !== '0') {
     availableActions.push({ key: 'cancelExpansion', name: 'Cancel Expansion', disabled: false })
   }
@@ -183,6 +256,7 @@ function actions({ selected, engineImages, showAttachHost, detach, showEngineUpg
   if (selected.standby) {
     availableActions.push({ key: 'changeVolume', name: 'Activate Disaster Recovery Volume', disabled: !selected.standby })
   }
+  availableActions.push({ key: 'trimFilesystem', name: 'Trim Filesystem', disabled: selected.state !== 'attached' })
   toggleRollbackAndUpgradeAction(availableActions)
   return (
     <DropOption menuOptions={availableActions}
@@ -204,17 +278,23 @@ actions.propTypes = {
   takeSnapshot: PropTypes.func,
   showSalvage: PropTypes.func,
   rollback: PropTypes.func,
+  showCloneVolume: PropTypes.func,
   showUpdateReplicaCount: PropTypes.func,
+  updateSnapshotMaxCount: PropTypes.func,
+  updateSnapshotMaxSize: PropTypes.func,
   createPVAndPVC: PropTypes.func,
   changeVolume: PropTypes.func,
-  confirmDetachWithWorkload: PropTypes.func,
   commandKeyDown: PropTypes.bool,
   showExpansionVolumeSizeModal: PropTypes.func,
   showCancelExpansionModal: PropTypes.func,
   showUpdateDataLocality: PropTypes.func,
   showUpdateAccessMode: PropTypes.func,
   showUpdateReplicaAutoBalanceModal: PropTypes.func,
+  showUnmapMarkSnapChainRemovedModal: PropTypes.func,
+  trimFilesystem: PropTypes.func,
+  showUpdateSnapshotDataIntegrityModal: PropTypes.func,
   engineUpgradePerNodeLimit: PropTypes.object,
+  showUpdateFreezeFilesystemForSnapshotModal: PropTypes.func,
 }
 
 export default actions

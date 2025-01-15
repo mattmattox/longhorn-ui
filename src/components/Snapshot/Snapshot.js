@@ -1,7 +1,7 @@
 import React from 'react'
 import PropTypes from 'prop-types'
 import { Tree, Icon, Menu, Dropdown, Button, Tooltip, Progress, Spin, Modal } from 'antd'
-import { formatSnapshot, formatMib } from '../../utils/formater'
+import { formatSnapshot, formatMib } from '../../utils/formatter'
 import { formatDate } from '../../utils/formatDate'
 import { disabledSnapshotAction } from '../../routes/volume/helper/index'
 import './Snapshot.less'
@@ -15,6 +15,7 @@ function StartPoint() {
   )
 }
 
+// display volume head
 function VolumeHead(props) {
   return (
     props ? (<Tooltip placement="right"
@@ -30,10 +31,11 @@ function VolumeHead(props) {
         <Icon type="caret-right" />Volume Head
         </Button>
     </div>
-    </Tooltip>) : (<div className="snapshot-current-desc">
+    </Tooltip>) : (
+      <div className="snapshot-current-desc">
         <Button>
           <Icon type="caret-right" />Volume Head
-          </Button>
+        </Button>
       </div>)
   )
 }
@@ -45,6 +47,7 @@ VolumeHead.propTypes = {
   usercreated: PropTypes.string,
 }
 
+// render each snapshot action dropdown
 function SnapshotIcon(props, snapshotProps) {
   function doAction(key) {
     snapshotProps.onAction({
@@ -55,6 +58,7 @@ function SnapshotIcon(props, snapshotProps) {
       },
     })
   }
+
   function onClick({ key }) {
     if (key === 'snapshotRevert' && snapshotProps && snapshotProps.volume) {
       const title = (
@@ -99,10 +103,21 @@ function SnapshotIcon(props, snapshotProps) {
           </div>}><div className="disable-dropdown-menu">Revert</div></Tooltip> }
         </Menu.Item> : ''
       }
-      { props.usercreated && !snapshotObject.removed ? <Menu.Item key="snapshotBackup" className="revert-menu-item">
-          { !snapshotProps.disableBackup ? <div style={{ padding: '0px 12px' }}>Backup</div> : <Tooltip title={snapshotProps.disableBackupMessage}><div className="disable-dropdown-menu">Backup</div></Tooltip>}
-        </Menu.Item> : ''
+      { props.usercreated && !snapshotObject.removed ? (
+        <Menu.Item key="snapshotBackup" className="revert-menu-item">
+          { !snapshotProps.disableBackup ? (
+            <div style={{ padding: '0px 12px' }}>Back Up</div>
+          ) : (
+            <Tooltip title={snapshotProps.disableBackupMessage}>
+              <div className="disable-dropdown-menu">Back up</div>
+            </Tooltip>
+          )}
+        </Menu.Item>
+      ) : ''
       }
+      <Menu.Item key="cloneVolumeFromSnapshot">
+        <div style={{ padding: '0px 12px' }}>Clone Volume</div>
+      </Menu.Item>
       <Menu.Item key="snapshotDelete">
         <div style={{ padding: '0px 12px' }}>Delete</div>
       </Menu.Item>
@@ -190,6 +205,7 @@ SnapshotIcon.propTypes = {
   usercreated: PropTypes.string,
 }
 
+// render volume head point with take snapshot action
 function CurrentPoint(props) {
   function onClick() {
     props.onAction({
@@ -200,9 +216,7 @@ function CurrentPoint(props) {
     })
   }
   const menu = (
-    <Menu
-      onClick={onClick}
-    >
+    <Menu onClick={onClick}>
       <Menu.Item key="1" disabled={disabledSnapshotAction(props.volume, props.state)}>
         <span>Take Snapshot</span>
       </Menu.Item>
@@ -214,7 +228,7 @@ function CurrentPoint(props) {
       trigger={['click']}
       key={props.volume.id}
     >
-    {VolumeHead(props.volumeHead)}
+      {VolumeHead(props.volumeHead)}
     </Dropdown>
   )
 }
@@ -254,7 +268,6 @@ class Snapshot extends React.Component {
   render() {
     let props = this.props
     let children = null
-
     if (props.snapshotTree) {
       children = props.snapshotTree.length > 0 ? loop(props.snapshotTree, props) : <TreeNode key="1" title={CurrentPoint(props)} />
       if (props.loading || this.state.loadingState !== props.loading) {

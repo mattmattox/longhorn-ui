@@ -1,7 +1,6 @@
 import React from 'react'
 import PropTypes from 'prop-types'
 import { Input } from 'antd'
-import { formatPath } from '../helper/index'
 
 class PathInput extends React.Component {
   constructor(props) {
@@ -27,11 +26,6 @@ class PathInput extends React.Component {
     this.triggerChange(value)
   }
 
-  handleBlur = (e) => {
-    const value = formatPath(e.target.value)
-    this.triggerChange(value)
-  }
-
   triggerChange = (changedValue) => {
     const onChange = this.props.onChange
     if (onChange) {
@@ -42,7 +36,14 @@ class PathInput extends React.Component {
   render() {
     const state = this.state
     return (
-      <Input {...this.props} type="text" size="large" onBlur={this.handleBlur} onChange={this.handleValueChange} value={state.value} />
+      <Input
+        placeholder={this.props.placeholder}
+        readOnly={this.props.readOnly}
+        type="text"
+        size="large"
+        onChange={this.handleValueChange}
+        value={state.value}
+      />
     )
   }
 }
@@ -50,6 +51,9 @@ class PathInput extends React.Component {
 PathInput.propTypes = {
   value: PropTypes.string,
   defaultValue: PropTypes.string,
+  placeholder: PropTypes.string,
+  readOnly: PropTypes.bool,
+  diskTypeIsFilesystem: PropTypes.bool,
   onChange: PropTypes.func,
 }
 

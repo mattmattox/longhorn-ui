@@ -1,21 +1,22 @@
 import React from 'react'
 import PropTypes from 'prop-types'
-import { Form, Input, Checkbox, Radio, Select } from 'antd'
+import { Form, Input, Checkbox, Radio, Select, Icon, Tooltip } from 'antd'
 import { ModalBlur } from '../../components'
+import style from './CreatePVAndPVC.less'
 const FormItem = Form.Item
 const { Option } = Select
 
 const formItemLayout = {
   labelCol: {
-    span: 7,
+    span: 9,
   },
   wrapperCol: {
-    span: 15,
+    span: 13,
   },
 }
 const formItemLayout2 = {
   labelCol: {
-    span: 14,
+    span: 18,
   },
   wrapperCol: {
     span: 2,
@@ -97,6 +98,18 @@ const modal = ({
             initialValue: '',
           })(<Input disabled={false} />)}
         </FormItem>}
+        <FormItem label="Storage Class Name" {...formItemLayout}>
+          {getFieldDecorator('storageClassName', {
+            initialValue: '',
+          })(<div className={style.storageClassName}>
+            <Input disabled={item.pvNameDisabled} />
+            <Tooltip title={'If no value is provided, Longhorn will first utilize the storageClassName stored in the backup volume if the volume is being restored from a backup. Otherwise, Longhorn will use the storageClassName specified in the default setting.'}>
+              <span className={style.icon}>
+                <Icon type="info-circle" />
+              </span>
+            </Tooltip>
+          </div>)}
+        </FormItem>
         <FormItem label="File System" {...formItemLayout}>
           {getFieldDecorator('fsType', {
             initialValue: 'ext4',

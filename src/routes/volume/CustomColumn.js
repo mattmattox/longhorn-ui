@@ -95,6 +95,10 @@ const modal = ({
       value: 'accessMode',
       label: 'Access Mode',
     },
+    {
+      value: 'dataEngine',
+      label: 'Data Engine',
+    },
   ]
 
   const modalOpts = {

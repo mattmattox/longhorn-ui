@@ -6,10 +6,11 @@ const confirm = Modal.confirm
 
 function actions({ selected, deleteRecurringJob, editRecurringJob }) {
   const handleMenuClick = (event, record) => {
+    event.domEvent?.stopPropagation?.()
     switch (event.key) {
       case 'delete':
         confirm({
-          title: `Are you sure you want to delete Recurring Job ${record.name} ?`,
+          title: `Are you sure you want to delete Recurring Job ${record.name}?`,
           content: <Alert
             description={`If the recurring job ${record.name} is the last one of a job group, Longhorn will remove the group from all volumes automatically.`}
             type="warning"
@@ -28,8 +29,8 @@ function actions({ selected, deleteRecurringJob, editRecurringJob }) {
   }
 
   const availableActions = [
-    { key: 'delete', name: 'Delete' },
     { key: 'edit', name: 'Edit' },
+    { key: 'delete', name: 'Delete' },
   ]
 
   return (

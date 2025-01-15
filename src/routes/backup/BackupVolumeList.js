@@ -3,7 +3,7 @@ import PropTypes from 'prop-types'
 import { Table, Icon, Tooltip } from 'antd'
 import { formatDate } from '../../utils/formatDate'
 import { Link } from 'dva/router'
-import { formatMib } from '../../utils/formater'
+import { formatMib } from '../../utils/formatter'
 import { DropOption } from '../../components'
 import { sortTable } from '../../utils/sort'
 import { setSortOrder } from '../../utils/store'
@@ -22,30 +22,26 @@ class List extends React.Component {
   }
 
   componentDidMount() {
-    let height = document.getElementById('backTable').offsetHeight - C.ContainerMarginHeight
-    this.setState({
-      height,
-    })
-    window.onresize = () => {
-      height = document.getElementById('backTable').offsetHeight - C.ContainerMarginHeight
-      this.setState({
-        height,
-      })
-      this.props.dispatch({ type: 'app/changeNavbar' })
-    }
+    this.onResize()
+    window.addEventListener('resize', this.onResize)
     window.addEventListener('keydown', this.onkeydown)
     window.addEventListener('keyup', this.onkeyup)
   }
 
   componentWillUnmount() {
-    window.onresize = () => {
-      this.props.dispatch({ type: 'app/changeNavbar' })
-    }
+    window.removeEventListener('resize', this.onResize)
     window.removeEventListener('keydown', this.onkeydown)
     window.removeEventListener('keyup', this.onkeyup)
   }
 
-  fomartData = (data, key) => {
+  onResize = () => {
+    const height = document.getElementById('backTable').offsetHeight - C.ContainerMarginHeight
+    this.setState({
+      height,
+    })
+  }
+
+  formatData = (data, key) => {
     if (this.isJson(data)) {
       let obj = JSON.parse(data)
 
@@ -88,9 +84,11 @@ class List extends React.Component {
     if (e.key === 'recovery') {
       this.props.Create(record)
     } else if (e.key === 'deleteAll') {
-      this.props.DeleteAllBackups(record)
+      this.props.deleteAllBackups(record)
     } else if (e.key === 'restoreLatestBackup') {
       this.props.restoreLatestBackup(record)
+    } else if (e.key === 'syncBackupVolume') {
+      this.props.syncBackupVolume(record)
     } else if (e.key === 'backingImageInfo') {
       this.props.showBackingImageInfo(record)
     }
@@ -103,10 +101,10 @@ class List extends React.Component {
     const columns = [
       {
         title: 'Name',
-        dataIndex: 'id',
-        key: 'id',
+        dataIndex: 'volumeName',
+        key: 'volumeName',
         width: 200,
-        sorter: (a, b) => sortTable(a, b, 'id'),
+        sorter: (a, b) => sortTable(a, b, 'volumeName'),
         render: (id, record) => {
           let errorMessage = record.messages && record.messages.error ? record.messages.error : ''
           return (
@@ -117,8 +115,8 @@ class List extends React.Component {
                   to={{
                     pathname: `/backup/${id}`,
                     search: queryString.stringify({
-                      field: 'volumeName',
-                      keyword: id,
+                      field: 'name',
+                      keyword: record.name,
                     }),
                   }}>
                   {id}
@@ -131,13 +129,25 @@ class List extends React.Component {
         title: 'Size',
         dataIndex: 'size',
         key: 'size',
-        width: 100,
+        width: 80,
         sorter: (a, b) => sortTable(a, b, 'size'),
         render: (text) => {
           return (
             <div>
               {formatMib(text)}
             </div>
+          )
+        },
+      },
+      {
+        title: 'Backup Target',
+        dataIndex: 'backupTargetName',
+        key: 'backupTargetName',
+        width: 200,
+        sorter: (a, b) => sortTable(a, b, 'backupTargetName'),
+        render: (text) => {
+          return (
+            <div>{text}</div>
           )
         },
       },
@@ -179,7 +189,7 @@ class List extends React.Component {
           let storageObj = {}
 
           if (record) {
-            storageObj = this.fomartData(record.KubernetesStatus)
+            storageObj = this.formatData(record.KubernetesStatus)
           }
           let title = (<div>
             <div><span>PV Name</span><span>: </span><span>{storageObj.pvName}</span></div>
@@ -220,7 +230,7 @@ class List extends React.Component {
           let storageObj = {}
 
           if (record) {
-            storageObj = this.fomartData(record.KubernetesStatus)
+            storageObj = this.formatData(record.KubernetesStatus)
             storageObj.snapshotCreated = record.snapshotCreated ? record.snapshotCreated : ''
           }
 
@@ -252,6 +262,7 @@ class List extends React.Component {
             <DropOption menuOptions={[
               { key: 'recovery', name: 'Create Disaster Recovery Volume', disabled: !record.lastBackupName || (record.messages && record.messages.error) },
               { key: 'restoreLatestBackup', name: 'Restore Latest Backup', disabled: !record.lastBackupName || (record.messages && record.messages.error) },
+              { key: 'syncBackupVolume', name: 'Sync Backup Volume' },
               { key: 'deleteAll', name: 'Delete All Backups' },
               { key: 'backingImageInfo', name: 'Backing Image Info', disabled: !hasBackingImage, tooltip: hasBackingImage ? '' : 'No backing image is used' },
             ]}
@@ -278,9 +289,8 @@ class List extends React.Component {
     })
 
     return (
-      <div id="backTable" style={{ overflow: 'hidden', flex: 1 }}>
+      <div id="backTable">
         <Table
-          className="common-table-class"
           rowSelection={rowSelection}
           locale={locale}
           bordered={false}
@@ -314,9 +324,10 @@ List.propTypes = {
   onSorterChange: PropTypes.func,
   Create: PropTypes.func,
   onRowClick: PropTypes.func,
-  DeleteAllBackups: PropTypes.func,
+  deleteAllBackups: PropTypes.func,
   dispatch: PropTypes.func,
   restoreLatestBackup: PropTypes.func,
+  syncBackupVolume: PropTypes.func,
   showBackingImageInfo: PropTypes.func,
   showWorkloadsStatusDetail: PropTypes.func,
 }

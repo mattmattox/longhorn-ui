@@ -1,4 +1,4 @@
-import { isoStrToDate, utcStrToDate } from './formater'
+import { isoStrToDate, utcStrToDate } from './formatter'
 
 const getStateWeight = (state) => {
   switch (state) {
@@ -43,6 +43,12 @@ export function sortVolume(dataSource) {
       return utcStrToDate(b.created).getTime() - utcStrToDate(a.created).getTime()
     }
     return status
+  })
+}
+
+export function sortByCreatedTime(dataSource) {
+  dataSource && dataSource.sort((a, b) => {
+    return new Date(b.created).getTime() - new Date(a.created).getTime()
   })
 }
 

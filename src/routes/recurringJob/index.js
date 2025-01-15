@@ -30,17 +30,19 @@ class RecurringJob extends React.Component {
   }
 
   componentDidMount() {
-    let height = document.getElementById('recurringJobTable').offsetHeight - C.ContainerMarginHeight
+    this.onResize()
+    window.addEventListener('resize', this.onResize)
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('resize', this.onResize)
+  }
+
+  onResize = () => {
+    const height = document.getElementById('recurringJobTable').offsetHeight - C.ContainerMarginHeight
     this.setState({
       height,
     })
-    window.onresize = () => {
-      height = document.getElementById('recurringJobTable').offsetHeight - C.ContainerMarginHeight
-      this.setState({
-        height,
-      })
-      this.props.dispatch({ type: 'app/changeNavbar' })
-    }
   }
 
   showCreateRecurringJobModal =() => {
@@ -119,7 +121,6 @@ class RecurringJob extends React.Component {
     if (recurringJobs && recurringJobs.length > 0) {
       recurringJobs.sort((a, b) => a.name.localeCompare(b.name))
     }
-
     const createRecurringJobModalProps = {
       item: this.state.selected,
       visible: this.state.createRecurringJobModalVisible,

@@ -2,14 +2,28 @@ import React from 'react'
 import PropTypes from 'prop-types'
 import { Modal } from 'antd'
 import { DropOption } from '../../components'
+import { hasReadyBackingDisk } from '../../utils/status'
+
 const confirm = Modal.confirm
 
-function actions({ selected, deleteBackingImage, cleanUpDiskMap, downloadBackingImage }) {
+function actions({
+  selected,
+  backupProps,
+  deleteBackingImage,
+  downloadBackingImage,
+  showUpdateMinCopiesCount,
+  openBackupBackingImageModal,
+}) {
+  const { backupTargetAvailable, backupTargetMessage } = backupProps
+
   const handleMenuClick = (event, record) => {
+    event.domEvent?.stopPropagation?.()
     switch (event.key) {
       case 'delete':
         confirm({
-          title: `Are you sure you want to delete backing image ${record.name} ?`,
+          okText: 'Delete',
+          okType: 'danger',
+          title: `Are you sure you want to delete ${record.name} backing image ?`,
           onOk() {
             deleteBackingImage(record)
           },
@@ -18,17 +32,48 @@ function actions({ selected, deleteBackingImage, cleanUpDiskMap, downloadBacking
       case 'download':
         downloadBackingImage(record)
         break
-      case 'cleanUp':
-        cleanUpDiskMap(record)
+      case 'updateMinCopies':
+        showUpdateMinCopiesCount(record)
         break
+      case 'backup': {
+        openBackupBackingImageModal(record)
+        break
+      }
       default:
     }
   }
 
+  const disableAction = !hasReadyBackingDisk(selected)
+  const getBackupActionTooltip = () => {
+    if (!backupTargetAvailable) {
+      return backupTargetMessage
+    }
+    return disableAction ? 'Missing disk with ready state' : ''
+  }
+
   const availableActions = [
-    { key: 'delete', name: 'Delete' },
-    { key: 'download', name: 'Download' },
-    { key: 'cleanUp', name: 'Clean Up' },
+    {
+      key: 'updateMinCopies',
+      name: 'Update Minimum Copies Count',
+      disabled: disableAction,
+      tooltip: disableAction ? 'Missing disk with ready state' : ''
+    },
+    {
+      key: 'backup',
+      name: ' Back Up',
+      disabled: disableAction || backupTargetAvailable === false,
+      tooltip: getBackupActionTooltip()
+    },
+    {
+      key: 'download',
+      name: 'Download',
+      disabled: disableAction || selected.dataEngine === 'v2',
+      tooltip: disableAction ? 'Missing disk with ready state' : ''
+    },
+    {
+      key: 'delete',
+      name: 'Delete'
+    },
   ]
 
   return (
@@ -41,8 +86,10 @@ function actions({ selected, deleteBackingImage, cleanUpDiskMap, downloadBacking
 actions.propTypes = {
   selected: PropTypes.object,
   deleteBackingImage: PropTypes.func,
-  cleanUpDiskMap: PropTypes.func,
   downloadBackingImage: PropTypes.func,
+  showUpdateMinCopiesCount: PropTypes.func,
+  backupProps: PropTypes.object,
+  openBackupBackingImageModal: PropTypes.func,
 }
 
 export default actions
